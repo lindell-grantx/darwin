@@ -13,25 +13,30 @@ def _gene(genes: dict[str, Any], name: str, default: Any) -> Any:
     return genes.get(name, default)
 
 
-async def coordinate(query: str, chunks: list[Any], genes: dict[str, Any]) -> tuple[str, list[CandidateAnswer]]:
+async def coordinate(
+    query: str,
+    chunks: list[Any],
+    genes: dict[str, Any],
+    genome: dict[str, Any] | None = None,
+) -> tuple[str, list[CandidateAnswer]]:
     protocol = str(_gene(genes, "protocol", "solo"))
     blackboard = Blackboard(query=query, chunks=chunks)
 
     if protocol == "solo":
-        candidate = await generate_candidate(query, chunks, "synthesizer")
+        candidate = await generate_candidate(query, chunks, "synthesizer", genome=genome)
         blackboard.add_candidate(candidate)
         return candidate.answer, blackboard.candidates
 
     agent_names = _agent_roster(protocol, int(_gene(genes, "consultation_count", 2)))
     candidates = await asyncio.gather(
-        *(generate_candidate(query, chunks, agent_name) for agent_name in agent_names)
+        *(generate_candidate(query, chunks, agent_name, genome=genome) for agent_name in agent_names)
     )
     for candidate in candidates:
         blackboard.add_candidate(candidate)
 
     resolver = str(_gene(genes, "disagreement_resolver", "highest_confidence"))
     if protocol == "debate" or resolver == "debate":
-        final = await synthesize_final_answer(query, chunks, blackboard.candidates)
+        final = await synthesize_final_answer(query, chunks, blackboard.candidates, genome=genome)
         return final, blackboard.candidates
 
     if resolver == "majority_vote":
@@ -54,7 +59,7 @@ async def execute_protocol(
     blackboard.protocol = str(_gene(coordination_genes, "protocol", "solo"))
 
     chunks = await retrieve(query, retrieval_genes)
-    answer, candidates = await coordinate(query, chunks, coordination_genes)
+    answer, candidates = await coordinate(query, chunks, coordination_genes, genome=genome)
 
     if candidates:
         winner = max(candidates, key=lambda item: item.confidence)

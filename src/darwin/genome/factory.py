@@ -13,6 +13,7 @@ from darwin.db.schemas import (
     GeneratorModel,
     Genome,
     QueryTransform,
+    ReasoningPattern,
     RerankStrategy,
     RetrievalGenes,
     SourceTag,
@@ -29,6 +30,7 @@ _PROTOCOLS: tuple[str, ...] = get_args(CoordinationProtocol)
 _GENERATOR_MODELS: tuple[str, ...] = get_args(GeneratorModel)
 _SYSTEM_STYLES: tuple[str, ...] = ("concise", "detailed", "stepwise")
 _CHUNK_SIZES: tuple[int, ...] = (128, 256, 512, 1024)
+_REASONING_PATTERNS: tuple[str, ...] = get_args(ReasoningPattern)
 
 
 def _sample_source_routing(rng: random.Random) -> list[str]:
@@ -99,6 +101,8 @@ def random_genome(
         temperature=rng.uniform(0.0, 1.0),
         max_tokens=rng.randint(128, 2048),
         system_style=rng.choice(_SYSTEM_STYLES),
+        reasoning_pattern=rng.choice(_REASONING_PATTERNS),
+        self_critique=rng.choice([True, False]),
     )
 
     return Genome(

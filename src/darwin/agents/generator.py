@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from typing import Any, Optional
 
 from darwin.agents.blackboard import CandidateAnswer
 from darwin.retrieval.retriever import RetrievedChunk
@@ -15,10 +16,23 @@ AGENT_PROMPTS = {
     "synthesizer": "Synthesize the strongest points into a concise, complete answer.",
 }
 
+FINAL_ANSWER_MARKER = "Final answer:"
+
+
+def _extract_after(marker: str, text: str) -> str:
+    idx = text.rfind(marker)
+    return text[idx + len(marker):].strip() if idx != -1 else text.strip()
+
+
+def _generation_genes(genome: Optional[dict[str, Any]]) -> dict[str, Any]:
+    if not genome:
+        return {}
+    return dict(genome.get("generation_genes") or {})
+
 
 async def compose(query: str, chunks: list[RetrievedChunk], genome: dict) -> str:
     """Compatibility wrapper from DAR-9 for composing one answer from chunks."""
-    candidate = await generate_candidate(query, chunks, "synthesizer")
+    candidate = await generate_candidate(query, chunks, "synthesizer", genome=genome)
     return candidate.answer
 
 
@@ -26,12 +40,13 @@ async def generate_candidate(
     query: str,
     chunks: list[RetrievedChunk],
     agent_name: str = "synthesizer",
+    genome: Optional[dict[str, Any]] = None,
 ) -> CandidateAnswer:
     from darwin.llm.vertex import is_vertex_configured
 
     if is_vertex_configured():
         try:
-            return await _vertex_candidate(query, chunks, agent_name)
+            return await _vertex_candidate(query, chunks, agent_name, genome)
         except Exception:
             pass
     return _heuristic_candidate(query, chunks, agent_name)
@@ -41,6 +56,7 @@ async def synthesize_final_answer(
     query: str,
     chunks: list[RetrievedChunk],
     candidates: list[CandidateAnswer],
+    genome: Optional[dict[str, Any]] = None,
 ) -> str:
     from darwin.llm.vertex import is_vertex_configured, vertex_complete
 
@@ -54,7 +70,7 @@ async def synthesize_final_answer(
         for candidate in candidates
     )
     try:
-        return await vertex_complete(
+        answer = await vertex_complete(
             system="You are Darwin's final answer synthesizer.",
             user=(
                 f"Question: {query}\n\n"
@@ -68,26 +84,87 @@ async def synthesize_final_answer(
     except Exception:
         return max(candidates, key=lambda item: item.confidence).answer
 
+    gen_genes = _generation_genes(genome)
+    if gen_genes.get("self_critique", False):
+        try:
+            answer = await _self_critique_pass(query, answer)
+        except Exception:
+            pass
+    return answer
+
 
 async def _vertex_candidate(
     query: str,
     chunks: list[RetrievedChunk],
     agent_name: str,
+    genome: Optional[dict[str, Any]] = None,
 ) -> CandidateAnswer:
     from darwin.llm.vertex import vertex_complete
 
-    text = await vertex_complete(
-        system=AGENT_PROMPTS.get(agent_name, AGENT_PROMPTS["synthesizer"]),
-        user=(
+    gen_genes = _generation_genes(genome)
+    pattern = str(gen_genes.get("reasoning_pattern", "direct"))
+    context_block = _context_block(chunks)
+    system_prompt = AGENT_PROMPTS.get(agent_name, AGENT_PROMPTS["synthesizer"])
+
+    if pattern == "chain_of_thought":
+        user_prompt = (
             f"Question: {query}\n\n"
-            f"Retrieved context:\n{_context_block(chunks)}\n\n"
+            f"Context:\n{context_block}\n\n"
+            "Think step by step about what the context tells us, then output your "
+            f"final answer prefixed with '{FINAL_ANSWER_MARKER}'"
+        )
+    elif pattern == "reflect_then_answer":
+        user_prompt = (
+            f"Question: {query}\n\n"
+            f"Context:\n{context_block}\n\n"
+            "1. Draft an answer.\n"
+            "2. Critique your draft for accuracy and groundedness.\n"
+            f"3. Output the revised final answer prefixed with '{FINAL_ANSWER_MARKER}'."
+        )
+    else:
+        user_prompt = (
+            f"Question: {query}\n\n"
+            f"Retrieved context:\n{context_block}\n\n"
             "Return a concise answer grounded in the context."
+        )
+
+    raw = await vertex_complete(
+        system=system_prompt,
+        user=user_prompt,
+        max_tokens=2048,
+        thinking=True,
+    )
+
+    if pattern in ("chain_of_thought", "reflect_then_answer"):
+        answer = _extract_after(FINAL_ANSWER_MARKER, raw)
+    else:
+        answer = raw.strip()
+
+    if gen_genes.get("self_critique", False):
+        try:
+            answer = await _self_critique_pass(query, answer)
+        except Exception:
+            pass
+
+    confidence = _confidence_from_chunks(chunks)
+    return CandidateAnswer(agent_name=agent_name, answer=answer, confidence=confidence)
+
+
+async def _self_critique_pass(query: str, answer: str) -> str:
+    from darwin.llm.vertex import vertex_complete
+
+    raw = await vertex_complete(
+        system="You are a careful reviewer that improves answers for groundedness and accuracy.",
+        user=(
+            f"Original question: {query}\n\n"
+            f"Proposed answer: {answer}\n\n"
+            "Critique this answer's groundedness and accuracy. Then output the "
+            f"improved version after '{FINAL_ANSWER_MARKER}'."
         ),
         max_tokens=2048,
         thinking=True,
     )
-    confidence = _confidence_from_chunks(chunks)
-    return CandidateAnswer(agent_name=agent_name, answer=text, confidence=confidence)
+    return _extract_after(FINAL_ANSWER_MARKER, raw)
 
 
 def _heuristic_candidate(
