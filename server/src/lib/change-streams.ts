@@ -1,6 +1,6 @@
 import type { ChangeStream } from 'mongodb';
 import { champions, fitnessEvaluations, genomes } from '../db/client.ts';
-import { idToString } from '../db/mappers.ts';
+import { idToString, toIso } from '../db/mappers.ts';
 import { publish } from './event-bus.ts';
 
 const streams: ChangeStream[] = [];
@@ -10,8 +10,8 @@ export function startChangeStreams(): void {
   watchGenomes();
   watchChampions();
   // `generations` is a timeseries collection; Mongo can't run a $match-aggregation
-  // change stream on it. Skip — generation.evolved events would need a different path
-  // (e.g. emit from whatever process inserts the generation doc).
+  // change stream on it. Whatever process inserts the generation doc should also
+  // emit a `generation.evolved` event into the bus directly.
 }
 
 export async function stopChangeStreams(): Promise<void> {
@@ -38,7 +38,7 @@ function watchFitness(): void {
     publish({
       event_type: 'query.completed',
       generation: doc.generation,
-      timestamp: doc.timestamp.toISOString(),
+      timestamp: new Date().toISOString(),
       data: {
         run_id: doc.run_id,
         genome_id: idToString(doc.genome_id),
@@ -64,7 +64,7 @@ function watchGenomes(): void {
       publish({
         event_type: 'genome.born',
         generation: doc.generation,
-        timestamp: doc.created_at.toISOString(),
+        timestamp: toIso(doc.created_at) ?? new Date().toISOString(),
         data: {
           genome_id: idToString(doc._id),
           parent_ids: doc.parent_ids.map(idToString),
@@ -100,16 +100,15 @@ function watchChampions(): void {
     const doc = change.fullDocument;
     publish({
       event_type: 'champion.promoted',
-      generation: doc.genome.generation,
-      timestamp: doc.promoted_at.toISOString(),
+      generation: doc.promoted_at_generation,
+      timestamp: toIso(doc.created_at) ?? new Date().toISOString(),
       data: {
         champion_id: idToString(doc._id),
-        original_genome_id: idToString(doc.original_genome_id),
-        peak_fitness: doc.peak_fitness,
+        genome_id: idToString(doc.genome_id),
+        composite_fitness: doc.composite_fitness,
       },
     });
   });
   attachErrorLogger(stream, 'champions');
   streams.push(stream);
 }
-

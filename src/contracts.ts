@@ -1,40 +1,42 @@
 // Canonical API ↔ UI contracts.
 // Imported by both the Hono server (server/src/) and the Vite UI (frontend/src/ via @contracts alias).
-// Mirror: src/darwin/api/contracts.py — Pydantic counterpart; keep field names and types in sync.
+// Source of truth: the live MongoDB Atlas schema. See server/src/db/types.ts for raw doc shapes.
 
 // ─── Gene layers ──────────────────────────────────────────────────────────────
 
-export type EmbeddingModel = 'gemini_3072' | 'gemini_1536' | 'gemini_768' | 'gemini_256';
+export type EmbeddingModel = 'voyage-4-lite' | 'voyage-4' | 'voyage-4-large' | 'voyage-code-3';
 export type QueryTransform = 'none' | 'hyde' | 'multi_query' | 'step_back';
-export type RerankStrategy = 'none' | 'cross_encoder' | 'llm_rerank' | 'reciprocal_rank_fusion';
+export type RerankStrategy = 'none' | 'rrf' | 'voyage-rerank-2';
+export type SourceTag = 'mongodb' | 'langchain' | 'voyage';
 
 export interface RetrievalGenes {
   embedding_model: EmbeddingModel;
   chunk_size: number; // tokens: 128 | 256 | 512 | 1024
-  chunk_overlap: number; // fraction: 0.0 | 0.1 | 0.25 | 0.5
+  chunk_overlap: number; // fraction in [0.0, 1.0]
   query_transform: QueryTransform;
   rerank: RerankStrategy;
   confidence_threshold: number; // [0.0, 1.0]
-  source_routing: string[];
+  top_k: number;
+  source_routing: SourceTag[];
 }
 
 export type CoordinationProtocol = 'solo' | 'vote' | 'consult' | 'debate';
-export type DisagreementResolver = 'majority_vote' | 'highest_confidence' | 'debate';
 
 export interface CoordinationGenes {
   protocol: CoordinationProtocol;
-  consultation_count: number;
-  disagreement_resolver: DisagreementResolver;
+  consult_threshold: number; // [0.0, 1.0]
   timeout_ms: number;
+  debate_rounds: number;
 }
 
-export type MemoryStrategy = 'none' | 'checkpoint' | 'full_history';
-export type ContextCompression = 'none' | 'summarize' | 'truncate';
+export type GenerationModel = 'claude-haiku-4-5-20251001' | 'claude-sonnet-4-6';
+export type SystemStyle = 'detailed' | 'stepwise' | 'concise';
 
-export interface DurabilityGenes {
-  memory_strategy: MemoryStrategy;
-  checkpoint_every_n_turns: number;
-  context_compression: ContextCompression;
+export interface GenerationGenes {
+  model: GenerationModel;
+  temperature: number;
+  max_tokens: number;
+  system_style: SystemStyle;
 }
 
 // ─── Fitness ──────────────────────────────────────────────────────────────────
@@ -42,18 +44,20 @@ export interface DurabilityGenes {
 export interface FitnessComponents {
   relevance: number; // [0.0, 1.0]
   accuracy: number; // [0.0, 1.0]
+  coverage: number; // [0.0, 1.0]
   latency_ms: number;
   cost_usd: number;
 }
 
 export interface FitnessSummary {
   composite: number; // [0.0, 1.0]
-  last_updated: string; // ISO 8601
+  n_evaluations: number;
+  last_updated: string | null; // ISO 8601, null if never evaluated
 }
 
 // ─── Genome ───────────────────────────────────────────────────────────────────
 
-export type GenomeStatus = 'alive' | 'retired';
+export type GenomeStatus = 'alive' | 'retired' | 'champion';
 
 export interface GenomeSummary {
   id: string;
@@ -62,13 +66,13 @@ export interface GenomeSummary {
   fitness: FitnessSummary;
   retrieval_genes: RetrievalGenes;
   coordination_genes: CoordinationGenes;
-  durability_genes: DurabilityGenes;
+  generation_genes: GenerationGenes;
 }
 
 export interface GenomeDetail extends GenomeSummary {
   parent_ids: string[];
   created_at: string; // ISO 8601
-  mutation_log: string[];
+  notes: string | null;
 }
 
 // ─── Retrieval trace ──────────────────────────────────────────────────────────
@@ -91,6 +95,7 @@ export interface GenerationRecord {
   crossover_rate: number;
   mutation_rate: number;
   created_at: string; // ISO 8601
+  elite_genome_ids: string[];
 }
 
 export interface FitnessCurvePoint {
@@ -130,12 +135,11 @@ export interface LineageResponse {
 
 export interface ChampionRecord {
   id: string;
-  original_genome_id: string;
-  peak_fitness: number;
-  generations_alive: number;
-  lineage: string[]; // parent_id chain
-  retired_at: string | null; // ISO 8601
-  genome: GenomeSummary;
+  genome_id: string;
+  promoted_at_generation: number;
+  composite_fitness: number;
+  summary: string | null;
+  created_at: string; // ISO 8601
 }
 
 // ─── SSE events (/events) ─────────────────────────────────────────────────────

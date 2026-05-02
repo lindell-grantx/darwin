@@ -17,9 +17,9 @@ function summary(e: EvolutionEvent): string {
     case 'genome.retired':
       return `retired · gen ${e.generation}`;
     case 'champion.promoted':
-      return `champion ${e.data.champion_id as string} (peak ${(e.data.peak_fitness as number).toFixed(2)})`;
+      return `champion ${e.data.champion_id as string} (fit ${(e.data.composite_fitness as number).toFixed(2)})`;
     case 'query.completed':
-      return `query → ${e.data.winning_genome_id as string}`;
+      return `query → ${e.data.genome_id as string} (fit ${(e.data.composite_fitness as number).toFixed(2)})`;
   }
 }
 
