@@ -1,0 +1,28 @@
+{
+  "name": "@darwin/server",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Darwin — evolutionary RAG server (Node 24, Hono, MongoDB Atlas)",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "node --watch src/server.ts",
+    "start": "node src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "biome check",
+    "check:fix": "biome check --write",
+    "format": "biome format --write",
+    "lint": "biome lint"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.0.1",
+    "hono": "^4.6.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.14",
+    "@types/node": "^25.6.0",
+    "typescript": "^6.0.3"
+  }
+}
