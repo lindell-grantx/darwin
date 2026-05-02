@@ -3,9 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { EvolutionEvent } from '@contracts';
 
 import { getFitnessCurve, getPopulation } from './api';
-import { mockEvents } from './mock';
 
-const USE_MOCKS = (import.meta.env.VITE_USE_MOCKS ?? 'true') === 'true';
 const SSE_URL = `${(import.meta.env.VITE_API_URL as string | undefined) ?? ''}/events`;
 
 const MAX_EVENTS = 50;
@@ -16,33 +14,12 @@ const MAX_EVENTS = 50;
  * synthesizing `generation.evolved` events from the deltas.
  */
 export function useEvolutionEvents(): EvolutionEvent[] {
-  const [events, setEvents] = useState<EvolutionEvent[]>(USE_MOCKS ? mockEvents : []);
+  const [events, setEvents] = useState<EvolutionEvent[]>([]);
   const lastBest = useRef<number | null>(null);
 
   useEffect(() => {
-    if (USE_MOCKS) {
-      // Replay mocks every 6s so the UI feels alive.
-      const id = window.setInterval(() => {
-        setEvents((prev) => [
-          ...prev.slice(-MAX_EVENTS + 1),
-          {
-            type: 'evaluation.created',
-            timestamp: new Date().toISOString(),
-            data: {
-              genome_id: `g_mock_${Math.floor(Math.random() * 99)}`,
-              query_id: 'q_mock',
-              composite_fitness: 0.6 + Math.random() * 0.3,
-              generation: 4,
-            },
-          },
-        ]);
-      }, 6000);
-      return () => window.clearInterval(id);
-    }
-
     let es: EventSource | null = null;
     let pollId: number | null = null;
-    let cancelled = false;
 
     const startPolling = () => {
       if (pollId !== null) return;
@@ -95,10 +72,8 @@ export function useEvolutionEvents(): EvolutionEvent[] {
     }
 
     return () => {
-      cancelled = true;
       es?.close();
       if (pollId !== null) window.clearInterval(pollId);
-      void cancelled;
     };
   }, []);
 

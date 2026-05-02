@@ -2,11 +2,15 @@ import type {
   Champion,
   EvolutionEvent,
   FitnessCurveResponse,
+  GenerationsResponse,
   GenomeSummary,
   LineageResponse,
   PopulationResponse,
   QueryResponse,
-} from '@contracts';
+} from '../../../src/contracts.ts';
+
+// Mock fixtures live on the backend so the frontend always talks HTTP.
+// Each route tries the real DB first and falls back to these on empty / error.
 
 const genome = (id: string, generation: number, fitness: number): GenomeSummary => ({
   id,
@@ -43,6 +47,17 @@ export const mockPopulation: PopulationResponse = {
   current_generation: 4,
   alive_count: POP.length,
   genomes: POP,
+};
+
+export const mockGenerations: GenerationsResponse = {
+  generations: mockFitnessCurve.series.map((p) => ({
+    generation: p.generation,
+    created_at: new Date(Date.now() - (4 - p.generation) * 60_000).toISOString(),
+    population_size: POP.length,
+    best_fitness: p.best,
+    mean_fitness: p.mean,
+    diversity_index: p.diversity,
+  })),
 };
 
 const LINEAGE_PARENTS: Record<string, string | undefined> = {
@@ -89,39 +104,42 @@ export const mockChampions: Champion[] = [
   },
 ];
 
-export const mockQueryResponse: QueryResponse = {
-  run_id: 'run_demo_001',
-  answer:
-    'MongoDB Atlas Vector Search uses HNSW indexes by default. For 1M+ vectors at scale, tune `numCandidates` ≥ 10× `limit` and prefer cosine similarity for normalized embeddings.',
-  winning_genome: POP[POP.length - 1]!,
-  all_genome_results: POP.slice(-3).map((g) => ({
-    genome_id: g.id,
-    answer: `Answer from ${g.id} (composite fitness ${g.fitness_composite.toFixed(2)})`,
+export function mockQueryResponse(queryText: string): QueryResponse {
+  return {
+    run_id: `run_mock_${Date.now()}`,
+    answer:
+      'MongoDB Atlas Vector Search uses HNSW indexes by default. For 1M+ vectors at scale, tune `numCandidates` ≥ 10× `limit` and prefer cosine similarity for normalized embeddings.\n\n' +
+      `Query: ${queryText}`,
+    winning_genome: POP[POP.length - 1]!,
+    all_genome_results: POP.slice(-3).map((g) => ({
+      genome_id: g.id,
+      answer: `Answer from ${g.id} (composite fitness ${g.fitness_composite.toFixed(2)})`,
+      fitness: {
+        relevance: 0.78 + Math.random() * 0.1,
+        accuracy: 0.81 + Math.random() * 0.08,
+        coverage: 0.65 + Math.random() * 0.15,
+        latency_ms: 800 + Math.random() * 600,
+        cost_usd: 0.0008 + Math.random() * 0.0004,
+      },
+      composite_fitness: g.fitness_composite,
+      retrieval_trace: [
+        { chunk_id: 'chunk_a91', score: 0.91, position: 0 },
+        { chunk_id: 'chunk_b12', score: 0.84, position: 1 },
+        { chunk_id: 'chunk_c44', score: 0.79, position: 2 },
+      ],
+    })),
     fitness: {
-      relevance: 0.78 + Math.random() * 0.1,
-      accuracy: 0.81 + Math.random() * 0.08,
-      coverage: 0.65 + Math.random() * 0.15,
-      latency_ms: 800 + Math.random() * 600,
-      cost_usd: 0.0008 + Math.random() * 0.0004,
+      relevance: 0.84,
+      accuracy: 0.88,
+      coverage: 0.72,
+      latency_ms: 1120,
+      cost_usd: 0.00091,
     },
-    composite_fitness: g.fitness_composite,
-    retrieval_trace: [
-      { chunk_id: 'chunk_a91', score: 0.91, position: 0 },
-      { chunk_id: 'chunk_b12', score: 0.84, position: 1 },
-      { chunk_id: 'chunk_c44', score: 0.79, position: 2 },
-    ],
-  })),
-  fitness: {
-    relevance: 0.84,
-    accuracy: 0.88,
-    coverage: 0.72,
     latency_ms: 1120,
-    cost_usd: 0.00091,
-  },
-  latency_ms: 1120,
-};
+  };
+}
 
-export const mockEvents: EvolutionEvent[] = [
+export const mockInitialEvents: EvolutionEvent[] = [
   {
     type: 'query.started',
     timestamp: new Date(Date.now() - 1000 * 4).toISOString(),
@@ -143,3 +161,28 @@ export const mockEvents: EvolutionEvent[] = [
     data: { champion_id: 'champ_001', original_genome_id: 'g3_a', peak_fitness: 0.74 },
   },
 ];
+
+export function nextMockEvent(): EvolutionEvent {
+  return {
+    type: 'evaluation.created',
+    timestamp: new Date().toISOString(),
+    data: {
+      genome_id: `g_mock_${Math.floor(Math.random() * 99)}`,
+      query_id: 'q_mock',
+      composite_fitness: 0.6 + Math.random() * 0.3,
+      generation: 4,
+    },
+  };
+}
+
+// Helper: try real DB, fall back to mock on empty result or error.
+// `real` returns null to signal "empty / no data, use mock".
+export async function withMock<T>(real: () => Promise<T | null>, mock: T): Promise<T> {
+  try {
+    const result = await real();
+    return result ?? mock;
+  } catch (err) {
+    console.warn('[mock fallback]', err instanceof Error ? err.message : err);
+    return mock;
+  }
+}
