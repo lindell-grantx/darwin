@@ -1,9 +1,9 @@
 import type { ObjectId } from 'mongodb';
-import type { FitnessComponentsAPI } from '../../../src/contracts.ts';
+import type { FitnessComponents } from '../../../src/contracts.ts';
 
 // Raw MongoDB document shapes — one interface per collection.
 // IDs are ObjectId as stored; routes convert to .toHexString() for API responses.
-// Re-use FitnessComponentsAPI from contracts rather than duplicating the shape.
+// Re-use FitnessComponents from contracts rather than duplicating the shape.
 
 export interface RetrievalGenes {
   embedding_model: 'gemini_3072' | 'gemini_1536' | 'gemini_768' | 'gemini_256';
@@ -75,7 +75,7 @@ export interface QueryDoc {
 
 // ── fitness_evaluations ───────────────────────────────────────────────────────
 
-export type { FitnessComponentsAPI };
+export type { FitnessComponents };
 
 export interface RetrievalTraceEntry {
   chunk_id: ObjectId;
@@ -92,7 +92,7 @@ export interface FitnessEvaluationDoc {
   generated_answer: string;
   retrieval_trace: RetrievalTraceEntry[];
   coordination_trace: Record<string, unknown>;
-  components: FitnessComponentsAPI;
+  components: FitnessComponents;
   composite_fitness: number;
   timestamp: Date;
 }

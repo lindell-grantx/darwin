@@ -1,5 +1,5 @@
 import type {
-  Champion,
+  ChampionRecord,
   EvolutionEvent,
   FitnessCurveResponse,
   GenerationsResponse,
@@ -9,16 +9,31 @@ import type {
   QueryResponse,
 } from '../../../src/contracts.ts';
 
-// Mock fixtures live on the backend so the frontend always talks HTTP.
-// Each route tries the real DB first and falls back to these on empty / error.
-
 const genome = (id: string, generation: number, fitness: number): GenomeSummary => ({
   id,
   generation,
-  retrieval_genes: { embedder: 'voyage-3', k: 5 + generation, rerank: true },
-  coordination_genes: { quorum: 2, voters: ['claude', 'voyage'] },
-  durability_genes: { ttl_s: 600, replay_quorum: 2 },
-  fitness_composite: fitness,
+  status: 'alive',
+  fitness: { composite: fitness, last_updated: new Date().toISOString() },
+  retrieval_genes: {
+    embedding_model: 'gemini_1536',
+    chunk_size: 512,
+    chunk_overlap: 0.1,
+    query_transform: 'none',
+    rerank: 'none',
+    confidence_threshold: 0.5,
+    source_routing: ['docs'],
+  },
+  coordination_genes: {
+    protocol: 'solo',
+    consultation_count: 0,
+    disagreement_resolver: 'majority_vote',
+    timeout_ms: 5000,
+  },
+  durability_genes: {
+    memory_strategy: 'none',
+    checkpoint_every_n_turns: 5,
+    context_compression: 'none',
+  },
 });
 
 const POP: GenomeSummary[] = [
@@ -44,8 +59,8 @@ export const mockFitnessCurve: FitnessCurveResponse = {
 };
 
 export const mockPopulation: PopulationResponse = {
-  current_generation: 4,
-  alive_count: POP.length,
+  generation: 4,
+  population_size: POP.length,
   genomes: POP,
 };
 
@@ -57,6 +72,9 @@ export const mockGenerations: GenerationsResponse = {
     best_fitness: p.best,
     mean_fitness: p.mean,
     diversity_index: p.diversity,
+    selection: 'tournament',
+    crossover_rate: 1.0,
+    mutation_rate: 0.1,
   })),
 };
 
@@ -73,25 +91,30 @@ const LINEAGE_PARENTS: Record<string, string | undefined> = {
 };
 
 export function mockLineage(genomeId: string): LineageResponse {
-  const target = POP.find((g) => g.id === genomeId) ?? POP[POP.length - 1]!;
-  const ancestors: LineageResponse['ancestors'] = [];
-  let cur: string | undefined = LINEAGE_PARENTS[target.id];
-  let depth = 1;
-  while (cur) {
+  const seen = new Set<string>();
+  const nodes: LineageResponse['nodes'] = [];
+  const queue: string[] = [genomeId];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    if (seen.has(cur)) continue;
+    seen.add(cur);
     const g = POP.find((p) => p.id === cur);
-    if (!g) break;
-    ancestors.push({
-      genome: g,
-      gene_diff: { 'retrieval_genes.k': [g.retrieval_genes.k, (g.retrieval_genes.k as number) + 1] },
-      depth,
+    if (!g) continue;
+    const parentId = LINEAGE_PARENTS[cur];
+    nodes.push({
+      id: g.id,
+      generation: g.generation,
+      parent_ids: parentId ? [parentId] : [],
+      fitness: g.fitness,
+      retrieval_genes: g.retrieval_genes,
+      is_champion: cur === 'g3_a',
     });
-    cur = LINEAGE_PARENTS[cur];
-    depth += 1;
+    if (parentId) queue.push(parentId);
   }
-  return { genome: target, ancestors };
+  return { genome_id: genomeId, nodes };
 }
 
-export const mockChampions: Champion[] = [
+export const mockChampions: ChampionRecord[] = [
   {
     id: 'champ_001',
     original_genome_id: 'g3_a',
@@ -99,64 +122,49 @@ export const mockChampions: Champion[] = [
     generations_alive: 3,
     lineage: ['g0_a', 'g1_a', 'g2_a', 'g3_a'],
     retired_at: new Date(Date.now() - 1000 * 60 * 8).toISOString(),
-    final_genes: { embedder: 'voyage-3', k: 8, rerank: true },
-    current_genome: POP.find((g) => g.id === 'g3_a'),
+    genome: POP.find((g) => g.id === 'g3_a')!,
   },
 ];
 
 export function mockQueryResponse(queryText: string): QueryResponse {
+  const winner = POP[POP.length - 1]!;
   return {
     run_id: `run_mock_${Date.now()}`,
     answer:
       'MongoDB Atlas Vector Search uses HNSW indexes by default. For 1M+ vectors at scale, tune `numCandidates` ≥ 10× `limit` and prefer cosine similarity for normalized embeddings.\n\n' +
       `Query: ${queryText}`,
-    winning_genome: POP[POP.length - 1]!,
-    all_genome_results: POP.slice(-3).map((g) => ({
-      genome_id: g.id,
-      answer: `Answer from ${g.id} (composite fitness ${g.fitness_composite.toFixed(2)})`,
-      fitness: {
-        relevance: 0.78 + Math.random() * 0.1,
-        accuracy: 0.81 + Math.random() * 0.08,
-        coverage: 0.65 + Math.random() * 0.15,
-        latency_ms: 800 + Math.random() * 600,
-        cost_usd: 0.0008 + Math.random() * 0.0004,
-      },
-      composite_fitness: g.fitness_composite,
-      retrieval_trace: [
-        { chunk_id: 'chunk_a91', score: 0.91, position: 0 },
-        { chunk_id: 'chunk_b12', score: 0.84, position: 1 },
-        { chunk_id: 'chunk_c44', score: 0.79, position: 2 },
-      ],
-    })),
+    winning_genome: winner,
     fitness: {
       relevance: 0.84,
       accuracy: 0.88,
-      coverage: 0.72,
       latency_ms: 1120,
       cost_usd: 0.00091,
     },
-    latency_ms: 1120,
+    composite_fitness: winner.fitness.composite,
+    retrieval_trace: [
+      { chunk_id: 'chunk_a91', score: 0.91, position: 0 },
+      { chunk_id: 'chunk_b12', score: 0.84, position: 1 },
+      { chunk_id: 'chunk_c44', score: 0.79, position: 2 },
+    ],
   };
 }
 
 export const mockInitialEvents: EvolutionEvent[] = [
   {
-    type: 'query.started',
+    event_type: 'generation.evolved',
+    generation: 3,
     timestamp: new Date(Date.now() - 1000 * 4).toISOString(),
-    data: { run_id: 'run_demo_001', query_text: 'How do I tune Atlas Vector Search?', n_genomes: 3 },
+    data: { best_fitness: 0.71, mean_fitness: 0.6, n_offspring: 4 },
   },
   {
-    type: 'evaluation.created',
-    timestamp: new Date(Date.now() - 1000 * 3).toISOString(),
-    data: { genome_id: 'g4_a', query_id: 'q42', composite_fitness: 0.78, generation: 4 },
-  },
-  {
-    type: 'generation.evolved',
+    event_type: 'generation.evolved',
+    generation: 4,
     timestamp: new Date(Date.now() - 1000 * 2).toISOString(),
-    data: { generation: 4, best_fitness: 0.78, mean_fitness: 0.66, n_offspring: 4 },
+    data: { best_fitness: 0.78, mean_fitness: 0.66, n_offspring: 4 },
   },
   {
-    type: 'champion.promoted',
+    event_type: 'champion.promoted',
+    generation: 3,
     timestamp: new Date(Date.now() - 1000 * 1).toISOString(),
     data: { champion_id: 'champ_001', original_genome_id: 'g3_a', peak_fitness: 0.74 },
   },
@@ -164,19 +172,16 @@ export const mockInitialEvents: EvolutionEvent[] = [
 
 export function nextMockEvent(): EvolutionEvent {
   return {
-    type: 'evaluation.created',
+    event_type: 'genome.born',
+    generation: 4,
     timestamp: new Date().toISOString(),
     data: {
       genome_id: `g_mock_${Math.floor(Math.random() * 99)}`,
-      query_id: 'q_mock',
-      composite_fitness: 0.6 + Math.random() * 0.3,
-      generation: 4,
+      fitness: 0.6 + Math.random() * 0.3,
     },
   };
 }
 
-// Helper: try real DB, fall back to mock on empty result or error.
-// `real` returns null to signal "empty / no data, use mock".
 export async function withMock<T>(real: () => Promise<T | null>, mock: T): Promise<T> {
   try {
     const result = await real();

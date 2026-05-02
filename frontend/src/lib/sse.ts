@@ -33,13 +33,13 @@ export function useEvolutionEvents(): EvolutionEvent[] {
           setEvents((prev) => [
             ...prev.slice(-MAX_EVENTS + 1),
             {
-              type: 'generation.evolved',
+              event_type: 'generation.evolved',
+              generation: last.generation,
               timestamp: new Date().toISOString(),
               data: {
-                generation: last.generation,
                 best_fitness: last.best,
                 mean_fitness: last.mean,
-                n_offspring: pop.alive_count,
+                n_offspring: pop.population_size,
               },
             },
           ]);

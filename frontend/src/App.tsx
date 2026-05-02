@@ -8,9 +8,8 @@ import { useEvolutionEvents } from './lib/sse';
 
 export function App() {
   const events = useEvolutionEvents();
-  const lastGen = [...events].reverse().find((e) => e.type === 'generation.evolved');
-  const currentGen =
-    lastGen && lastGen.type === 'generation.evolved' ? lastGen.data.generation : '—';
+  const lastGen = [...events].reverse().find((e) => e.event_type === 'generation.evolved');
+  const currentGen = lastGen?.generation ?? '—';
 
   return (
     <div className="flex h-screen flex-col bg-zinc-950 text-zinc-100">

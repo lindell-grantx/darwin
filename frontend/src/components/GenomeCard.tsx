@@ -12,8 +12,7 @@ interface Props {
 }
 
 export function GenomeCard({ genome, compact = false }: Props) {
-  const k = genome.retrieval_genes.k;
-  const embedder = genome.retrieval_genes.embedder;
+  const { chunk_size, embedding_model } = genome.retrieval_genes;
   return (
     <div
       className={`rounded-md border border-zinc-800 bg-zinc-900/60 ${
@@ -22,13 +21,13 @@ export function GenomeCard({ genome, compact = false }: Props) {
     >
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-zinc-300">{genome.id}</span>
-        <span className={`font-mono font-semibold ${fitnessColor(genome.fitness_composite)}`}>
-          {genome.fitness_composite.toFixed(2)}
+        <span className={`font-mono font-semibold ${fitnessColor(genome.fitness.composite)}`}>
+          {genome.fitness.composite.toFixed(2)}
         </span>
       </div>
       {!compact && (
         <div className="mt-1 text-xs text-zinc-500">
-          gen {genome.generation} · {String(embedder)} · k={String(k)}
+          gen {genome.generation} · {embedding_model} · k={chunk_size}
         </div>
       )}
     </div>

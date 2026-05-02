@@ -12,8 +12,8 @@ population.get('/', async (c) => {
     if (docs.length === 0) return null;
     const currentGeneration = docs.reduce((max, d) => Math.max(max, d.generation), 0);
     return {
-      current_generation: currentGeneration,
-      alive_count: docs.length,
+      generation: currentGeneration,
+      population_size: docs.length,
       genomes: docs.map(toGenomeSummary),
     };
   }, mockPopulation);
