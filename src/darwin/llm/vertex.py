@@ -89,6 +89,67 @@ def _model() -> str:
     return os.environ.get("DARWIN_CLAUDE_MODEL") or DEFAULT_MODEL
 
 
+async def vertex_stream(
+    *,
+    system: Optional[str],
+    user: str,
+    max_tokens: int = 2048,
+    thinking: bool = True,
+):
+    """Async generator that yields text deltas as Vertex Opus 4.6 streams.
+
+    Use for live UI streaming. Yields strings (text deltas only — thinking
+    blocks are silently consumed). Caller can collect into a buffer and also
+    emit each delta over SSE / chunked HTTP.
+    """
+
+    if not is_vertex_configured():
+        raise RuntimeError(
+            "Vertex AI not configured. Set ANTHROPIC_VERTEX_PROJECT_ID or ensure ADC is available."
+        )
+
+    request: dict[str, Any] = {
+        "model": _model(),
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": user}],
+    }
+    if system is not None:
+        request["system"] = system
+    if thinking:
+        request["thinking"] = {"type": "adaptive"}
+        request["temperature"] = 1.0
+    else:
+        request["temperature"] = 0.0
+
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+
+    SENTINEL = object()
+
+    def _producer() -> None:
+        try:
+            client = get_vertex_client()
+            with client.messages.stream(**request) as stream:
+                for text in stream.text_stream:
+                    if text:
+                        loop.call_soon_threadsafe(queue.put_nowait, text)
+        except Exception as exc:
+            loop.call_soon_threadsafe(queue.put_nowait, exc)
+        finally:
+            loop.call_soon_threadsafe(queue.put_nowait, SENTINEL)
+
+    import threading
+    threading.Thread(target=_producer, daemon=True).start()
+
+    while True:
+        item = await queue.get()
+        if item is SENTINEL:
+            break
+        if isinstance(item, Exception):
+            raise item
+        yield item
+
+
 async def vertex_complete(
     *,
     system: Optional[str],
