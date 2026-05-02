@@ -8,6 +8,7 @@ from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from darwin.db.schemas import Genome
+from darwin.fitness.eval_split import mongo_match_exclude_holdout
 
 
 __all__ = [
@@ -67,19 +68,24 @@ def elite_select(candidates: list[Genome], k: int) -> list[Genome]:
 async def aggregate_mean_fitness_by_generation(
     db: AsyncIOMotorDatabase,
     generation: int,
+    *,
+    exclude_holdout_evals: bool = True,
 ) -> dict[str, float]:
     """Aggregate `fitness_evaluations` for `generation` → {genome_id: mean composite}.
 
-    Use a Mongo `$group` pipeline:
-        [{$match: {generation}}, {$group: {_id: "$genome_id", mean: {$avg: "$composite_fitness"}, n: {$sum: 1}}}]
-
-    Return a dict keyed by genome_id. Genomes with zero evaluations in this
-    generation are absent from the dict (caller decides how to handle them —
-    typically defaults to 0.0).
+    When ``exclude_holdout_evals`` is True (default), rows with ``eval_split: "holdout"``
+    are omitted so selection pressure does not overfit labelled holdout probes.
+    Rows without ``eval_split`` behave like train (historical payloads).
     """
 
+    match = (
+        mongo_match_exclude_holdout(generation)
+        if exclude_holdout_evals
+        else {"generation": generation}
+    )
+
     pipeline = [
-        {"$match": {"generation": generation}},
+        {"$match": match},
         {
             "$group": {
                 "_id": "$genome_id",

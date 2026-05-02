@@ -64,6 +64,7 @@ GeneratorModel = Literal[
 ]
 GenomeStatus = Literal["alive", "retired", "champion"]
 Difficulty = Literal["easy", "medium", "hard"]
+EvalSplit = Literal["train", "holdout"]
 
 # Agentic genes — control how the generator actually composes an answer.
 # These materially change the runtime path, unlike `system_style` (cosmetic).
@@ -224,6 +225,7 @@ class FitnessEvaluation(_Base):
     coordination_trace: dict[str, Any] = Field(default_factory=dict)
     components: FitnessComponents
     composite_fitness: float = Field(ge=0.0, le=1.0)
+    eval_split: Optional[EvalSplit] = None
     judge_critique: Optional[str] = None
     timestamp: datetime = Field(default_factory=_now)
 
