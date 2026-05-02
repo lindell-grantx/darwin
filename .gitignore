@@ -11,7 +11,7 @@ dist/
 .venv/
 venv/
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
 .pytest_cache/
 .mypy_cache/

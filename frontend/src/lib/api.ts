@@ -6,17 +6,6 @@ import type {
   QueryResponse,
 } from '@contracts';
 
-import {
-  mockChampions,
-  mockFitnessCurve,
-  mockLineage,
-  mockPopulation,
-  mockQueryResponse,
-} from './mock';
-
-// Toggle to develop offline against fixtures.
-const USE_MOCKS = (import.meta.env.VITE_USE_MOCKS ?? 'true') === 'true';
-
 const API = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 
 async function get<T>(path: string): Promise<T> {
@@ -35,30 +24,22 @@ async function post<T, B>(path: string, body: B): Promise<T> {
   return (await res.json()) as T;
 }
 
-export async function getFitnessCurve(): Promise<FitnessCurveResponse> {
-  if (USE_MOCKS) return mockFitnessCurve;
-  return get('/api/fitness-curve');
+export function getFitnessCurve(): Promise<FitnessCurveResponse> {
+  return get('/fitness-curve');
 }
 
-export async function getPopulation(): Promise<PopulationResponse> {
-  if (USE_MOCKS) return mockPopulation;
-  return get('/api/population');
+export function getPopulation(): Promise<PopulationResponse> {
+  return get('/population');
 }
 
-export async function getLineage(genomeId: string): Promise<LineageResponse> {
-  if (USE_MOCKS) return mockLineage(genomeId);
-  return get(`/api/lineage/${encodeURIComponent(genomeId)}`);
+export function getLineage(genomeId: string): Promise<LineageResponse> {
+  return get(`/lineage/${encodeURIComponent(genomeId)}`);
 }
 
-export async function getChampions(): Promise<Champion[]> {
-  if (USE_MOCKS) return mockChampions;
-  return get('/api/champions');
+export function getChampions(): Promise<Champion[]> {
+  return get('/champions');
 }
 
-export async function postQuery(text: string): Promise<QueryResponse> {
-  if (USE_MOCKS) {
-    await new Promise((r) => setTimeout(r, 700));
-    return { ...mockQueryResponse, answer: `[mock] ${mockQueryResponse.answer}\n\nQuery: ${text}` };
-  }
-  return post('/api/query', { text });
+export function postQuery(text: string): Promise<QueryResponse> {
+  return post('/query', { text });
 }
