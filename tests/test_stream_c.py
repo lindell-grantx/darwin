@@ -64,7 +64,10 @@ def test_run_genome_wires_retrieval_coordination_and_judge(monkeypatch: MonkeyPa
             CandidateAnswer("synthesizer", "Atlas Vector Search retrieves matching chunks.", 0.82)
         ]
 
-    async def fake_persist(result) -> None:  # type: ignore[no-untyped-def]
+    async def fake_persist(result: object, **_kwargs: object) -> None:  # noqa: ARG001
+        from darwin.agents.runner import AgentRunResult
+
+        assert isinstance(result, AgentRunResult)
         assert result.genome_id == "genome-1"
 
     monkeypatch.setattr("darwin.agents.runner.retrieve", fake_retrieve)
@@ -147,6 +150,7 @@ def test_dar_9_evaluate_signature(monkeypatch: MonkeyPatch) -> None:
         ground_truth: str | None = None,
         persist: bool = True,
         run_id: str | None = None,
+        eval_split: str | None = None,
     ):
         from darwin.agents.runner import AgentRunResult
         from darwin.fitness.judge import JudgeScores
@@ -160,23 +164,39 @@ def test_dar_9_evaluate_signature(monkeypatch: MonkeyPatch) -> None:
             fitness=JudgeScores(0.8, 0.7, 0.6, 0.9, 100.0, 0.0, 0.72, "ok"),
         )
 
+    inserts: list[dict] = []
+
     async def fake_insert(doc: dict) -> None:
-        assert doc["run_id"] == "run-1"
+        inserts.append(doc)
 
     monkeypatch.setattr("darwin.agents.runner.run_genome", fake_run_genome)
     monkeypatch.setattr("darwin.agents.runner._insert_evaluation_doc", fake_insert)
 
     from darwin.agents.blackboard import Blackboard
 
-    doc = asyncio.run(
+    bb = Blackboard(run_id="run-1", query="Question?", genomes=[])
+
+    doc_train = asyncio.run(
         evaluate(
             {"id": "genome-1", "generation": 2},
             {"id": "query-1", "text": "Question?", "ground_truth": "Truth"},
             "run-1",
-            Blackboard(run_id="run-1", query="Question?", genomes=[]),
+            bb,
+        )
+    )
+    asyncio.run(
+        evaluate(
+            {"id": "genome-1", "generation": 2},
+            {"id": "query-2", "text": "Question?", "ground_truth": "Truth"},
+            "run-ho",
+            bb,
+            eval_split="holdout",
         )
     )
 
+    doc = doc_train
     assert doc["query_id"] == "query-1"
     assert doc["generated_answer"] == "answer"
     assert doc["composite_fitness"] == 0.72
+    assert inserts[0].get("eval_split") is None
+    assert inserts[1].get("eval_split") == "holdout"

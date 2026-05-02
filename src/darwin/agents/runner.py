@@ -13,6 +13,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 from darwin.agents.blackboard import CandidateAnswer
 from darwin.agents.coordinator import coordinate
+from darwin.fitness.eval_split import EvalSplit, tag_eval_document
 from darwin.fitness.judge import JudgeScores, evaluate_answer
 from darwin.retrieval.retriever import RetrievedChunk, retrieve
 
@@ -61,6 +62,7 @@ async def run_genome(
     ground_truth: str | None = None,
     persist: bool = True,
     run_id: str | None = None,
+    eval_split: EvalSplit | None = None,
 ) -> AgentRunResult:
     started = time.perf_counter()
     genome_id = str(genome.get("_id") or genome.get("id") or "unknown-genome")
@@ -88,7 +90,7 @@ async def run_genome(
         fitness=fitness,
     )
     if persist:
-        await persist_run_result(result)
+        await persist_run_result(result, eval_split=eval_split)
     return result
 
 
@@ -97,6 +99,7 @@ async def evaluate(
     query: dict[str, Any],
     run_id: str,
     blackboard: Any,
+    eval_split: EvalSplit | None = None,
 ) -> dict[str, Any]:
     """Compatibility entry point from DAR-9 that returns a persisted evaluation doc."""
     text = str(query["text"])
@@ -116,19 +119,26 @@ async def evaluate(
             "timestamp": datetime.now(timezone.utc),
         }
     )
+    tag_eval_document(doc, eval_split)
     await _insert_evaluation_doc(doc)
     return doc
 
 
-async def persist_run_result(result: AgentRunResult) -> None:
+async def persist_run_result(
+    result: AgentRunResult,
+    *,
+    eval_split: EvalSplit | None = None,
+) -> None:
     uri = os.environ.get("MONGODB_URI") or os.environ.get("MONGO_URI")
     if not uri:
         return
     client = AsyncIOMotorClient(uri)
     db = client[os.environ.get("DB_NAME", "darwin")]
+    doc = result.to_document()
+    tag_eval_document(doc, eval_split)
     await db.fitness_evaluations.update_one(
         {"run_id": result.run_id},
-        {"$set": result.to_document()},
+        {"$set": doc},
         upsert=True,
     )
 

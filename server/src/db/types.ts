@@ -83,6 +83,7 @@ export interface FitnessEvaluationDoc {
   coordination_trace: Record<string, unknown>;
   components: FitnessComponents;
   composite_fitness: number;
+  eval_split?: 'train' | 'holdout';
 }
 
 // ── chunks ────────────────────────────────────────────────────────────────────
