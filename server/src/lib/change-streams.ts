@@ -1,5 +1,6 @@
 import type { ChangeStream } from 'mongodb';
-import { champions, fitnessEvaluations, generations, genomes } from '../db/client.ts';
+import { champions, fitnessEvaluations, genomes } from '../db/client.ts';
+import { idToString } from '../db/mappers.ts';
 import { publish } from './event-bus.ts';
 
 const streams: ChangeStream[] = [];
@@ -8,7 +9,9 @@ export function startChangeStreams(): void {
   watchFitness();
   watchGenomes();
   watchChampions();
-  watchGenerations();
+  // `generations` is a timeseries collection; Mongo can't run a $match-aggregation
+  // change stream on it. Skip — generation.evolved events would need a different path
+  // (e.g. emit from whatever process inserts the generation doc).
 }
 
 export async function stopChangeStreams(): Promise<void> {
@@ -38,8 +41,8 @@ function watchFitness(): void {
       timestamp: doc.timestamp.toISOString(),
       data: {
         run_id: doc.run_id,
-        genome_id: doc.genome_id.toHexString(),
-        query_id: doc.query_id.toHexString(),
+        genome_id: idToString(doc.genome_id),
+        query_id: idToString(doc.query_id),
         composite_fitness: doc.composite_fitness,
       },
     });
@@ -63,8 +66,8 @@ function watchGenomes(): void {
         generation: doc.generation,
         timestamp: doc.created_at.toISOString(),
         data: {
-          genome_id: doc._id.toHexString(),
-          parent_ids: doc.parent_ids.map((id) => id.toHexString()),
+          genome_id: idToString(doc._id),
+          parent_ids: doc.parent_ids.map(idToString),
           fitness: doc.fitness.composite,
         },
       });
@@ -80,7 +83,7 @@ function watchGenomes(): void {
         generation: doc.generation,
         timestamp: new Date().toISOString(),
         data: {
-          genome_id: doc._id.toHexString(),
+          genome_id: idToString(doc._id),
           final_fitness: doc.fitness.composite,
         },
       });
@@ -100,8 +103,8 @@ function watchChampions(): void {
       generation: doc.genome.generation,
       timestamp: doc.promoted_at.toISOString(),
       data: {
-        champion_id: doc._id.toHexString(),
-        original_genome_id: doc.original_genome_id.toHexString(),
+        champion_id: idToString(doc._id),
+        original_genome_id: idToString(doc.original_genome_id),
         peak_fitness: doc.peak_fitness,
       },
     });
@@ -110,23 +113,3 @@ function watchChampions(): void {
   streams.push(stream);
 }
 
-function watchGenerations(): void {
-  const stream = generations().watch([{ $match: { operationType: 'insert' } }]);
-  stream.on('change', (change) => {
-    if (change.operationType !== 'insert' || !change.fullDocument) return;
-    const doc = change.fullDocument;
-    publish({
-      event_type: 'generation.evolved',
-      generation: doc.generation,
-      timestamp: doc.created_at.toISOString(),
-      data: {
-        best_fitness: doc.best_fitness,
-        mean_fitness: doc.mean_fitness,
-        diversity_index: doc.diversity_index,
-        population_size: doc.population_size,
-      },
-    });
-  });
-  attachErrorLogger(stream, 'generations');
-  streams.push(stream);
-}

@@ -1,9 +1,18 @@
 import type { GenomeSummary } from '../../../src/contracts.ts';
 import type { GenomeDoc } from './types.ts';
 
+// Some docs were seeded with string _id instead of ObjectId; normalise both.
+export function idToString(id: unknown): string {
+  if (typeof id === 'string') return id;
+  if (id && typeof id === 'object' && 'toHexString' in id && typeof (id as { toHexString: unknown }).toHexString === 'function') {
+    return (id as { toHexString: () => string }).toHexString();
+  }
+  return String(id);
+}
+
 export function toGenomeSummary(doc: GenomeDoc): GenomeSummary {
   return {
-    id: doc._id.toHexString(),
+    id: idToString(doc._id),
     generation: doc.generation,
     status: doc.status,
     fitness: {
