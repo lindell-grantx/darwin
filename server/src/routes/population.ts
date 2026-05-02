@@ -1,9 +1,16 @@
 import { Hono } from 'hono';
+import type { PopulationResponse } from '../../../src/contracts.ts';
+import { genomes } from '../db/client.ts';
+import { toGenomeSummary } from '../db/mappers.ts';
 
 export const population = new Hono();
 
-// GET /population — list of alive genomes with summary fitness
 population.get('/', async (c) => {
-  // TODO(stream-b): db.genomes.find({ status: 'alive' }) with fitness summary
-  return c.json({ genomes: [] });
+  const docs = await genomes().find({ status: 'alive' }).toArray();
+  const currentGeneration = docs.reduce((max, d) => Math.max(max, d.generation), 0);
+  return c.json({
+    current_generation: currentGeneration,
+    alive_count: docs.length,
+    genomes: docs.map(toGenomeSummary),
+  } satisfies PopulationResponse);
 });
