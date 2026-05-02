@@ -17,8 +17,8 @@ lineage.get('/:genomeId', async (c) => {
   const queue: GenomeDoc[] = [rootDoc];
 
   while (queue.length > 0 && collected.size < 50) {
-    const doc = queue.shift()!;
-    if (doc.parent_ids.length === 0) continue;
+    const doc = queue.shift();
+    if (!doc || doc.parent_ids.length === 0) continue;
     const parents = await genomes()
       .find({ _id: { $in: doc.parent_ids } })
       .toArray();

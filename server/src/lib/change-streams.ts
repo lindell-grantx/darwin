@@ -29,10 +29,9 @@ function attachErrorLogger(stream: ChangeStream, label: string): void {
 }
 
 function watchFitness(): void {
-  const stream = fitnessEvaluations().watch(
-    [{ $match: { operationType: 'insert' } }],
-    { fullDocument: 'updateLookup' },
-  );
+  const stream = fitnessEvaluations().watch([{ $match: { operationType: 'insert' } }], {
+    fullDocument: 'updateLookup',
+  });
   stream.on('change', (change) => {
     if (change.operationType !== 'insert' || !change.fullDocument) return;
     const doc = change.fullDocument;
@@ -53,10 +52,9 @@ function watchFitness(): void {
 }
 
 function watchGenomes(): void {
-  const stream = genomes().watch(
-    [{ $match: { operationType: { $in: ['insert', 'update'] } } }],
-    { fullDocument: 'updateLookup' },
-  );
+  const stream = genomes().watch([{ $match: { operationType: { $in: ['insert', 'update'] } } }], {
+    fullDocument: 'updateLookup',
+  });
   stream.on('change', (change) => {
     if (!('fullDocument' in change) || !change.fullDocument) return;
     const doc = change.fullDocument;
