@@ -1,8 +1,361 @@
 @import 'tailwindcss';
 @import '@xyflow/react/dist/style.css';
 
+/* ─── Design tokens ──────────────────────────────────────────────────────── */
+@theme {
+  --font-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Instrument Serif', 'Newsreader', ui-serif, Georgia, serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  /* Inks (warm near-blacks, slight earth undertone) */
+  --color-ink-0: #0a0907;
+  --color-ink-1: #11100d;
+  --color-ink-2: #1a1813;
+  --color-ink-3: #221f18;
+
+  /* Hairlines */
+  --color-rule: #2e2920;
+  --color-rule-strong: #4a4332;
+
+  /* Brass / aged gold */
+  --color-brass: #a08550;
+  --color-brass-bright: #d4a44a;
+  --color-brass-dim: #6b573a;
+
+  /* Bone / parchment text */
+  --color-bone: #ebe2cc;
+  --color-bone-dim: #a89c80;
+  --color-bone-fade: #6c6450;
+
+  /* Botanical accents */
+  --color-moss: #8eb190;
+  --color-moss-deep: #2c4634;
+
+  --color-ember: #d18752;
+  --color-ember-deep: #3a2014;
+
+  --color-oxblood: #b04a4a;
+  --color-oxblood-deep: #3d1818;
+}
+
+/* ─── Base ───────────────────────────────────────────────────────────────── */
 html,
 body,
 #root {
   height: 100%;
+}
+
+body {
+  background: var(--color-ink-0);
+  color: var(--color-bone);
+  font-family: var(--font-sans);
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+/* Atmospheric vignette + paper grain over everything */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 90% 60% at 50% -10%, rgba(160, 133, 80, 0.07), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 100%, rgba(46, 70, 52, 0.05), transparent 60%),
+    radial-gradient(ellipse 70% 50% at 0% 80%, rgba(0, 0, 0, 0.4), transparent 60%);
+  z-index: 1;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.92  0 0 0 0 0.86  0 0 0 0 0.74  0 0 0 0.55 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  opacity: 0.08;
+  mix-blend-mode: overlay;
+  z-index: 2;
+}
+
+::selection {
+  background: var(--color-brass-bright);
+  color: var(--color-ink-0);
+}
+
+/* ─── Custom scrollbar ───────────────────────────────────────────────────── */
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-rule-strong);
+  border-radius: 0;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-brass-dim);
+}
+
+/* ─── Animations ─────────────────────────────────────────────────────────── */
+@keyframes plate-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-plate {
+  animation: plate-rise 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes mast-fade {
+  from {
+    opacity: 0;
+    letter-spacing: 0.05em;
+  }
+  to {
+    opacity: 1;
+    letter-spacing: -0.02em;
+  }
+}
+.animate-mast {
+  animation: mast-fade 1.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes pulse-life {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(142, 177, 144, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(142, 177, 144, 0);
+  }
+}
+.pulse-life {
+  animation: pulse-life 2.4s ease-out infinite;
+}
+
+@keyframes blink-soft {
+  0%,
+  60%,
+  100% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 0.3;
+  }
+}
+.blink-soft {
+  animation: blink-soft 1.6s steps(1, end) infinite;
+}
+
+@keyframes ticker-flash {
+  0% {
+    background: rgba(212, 164, 74, 0.18);
+  }
+  100% {
+    background: transparent;
+  }
+}
+.ticker-flash {
+  animation: ticker-flash 1.8s ease-out;
+}
+
+@keyframes drawer-slide {
+  from {
+    transform: translateX(100%);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+.animate-drawer {
+  animation: drawer-slide 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes backdrop-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-backdrop {
+  animation: backdrop-fade 0.3s ease-out both;
+}
+
+@keyframes scroll-x {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* ─── Plate / panel framing ─────────────────────────────────────────────── */
+.plate {
+  position: relative;
+  background:
+    radial-gradient(ellipse 90% 60% at 50% -10%, rgba(160, 133, 80, 0.06), transparent 60%),
+    linear-gradient(180deg, #1f1c15 0%, #15130e 100%);
+  border: 1px solid var(--color-rule);
+}
+
+.plate-corner {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  border-color: var(--color-brass);
+}
+.plate-corner.tl {
+  top: -1px;
+  left: -1px;
+  border-top: 1px solid;
+  border-left: 1px solid;
+}
+.plate-corner.tr {
+  top: -1px;
+  right: -1px;
+  border-top: 1px solid;
+  border-right: 1px solid;
+}
+.plate-corner.bl {
+  bottom: -1px;
+  left: -1px;
+  border-bottom: 1px solid;
+  border-left: 1px solid;
+}
+.plate-corner.br {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 1px solid;
+  border-right: 1px solid;
+}
+
+/* Double rule (journal-style) */
+.rule-double {
+  border-top: 1px solid var(--color-rule-strong);
+  border-bottom: 1px solid var(--color-rule);
+  height: 4px;
+}
+
+/* Numeric tabular figures */
+.numeric {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum', 'ss01';
+}
+
+/* Small caps label */
+.label-cap {
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--color-bone-fade);
+  font-weight: 500;
+}
+
+/* Soft glow on hover for cards */
+.lift {
+  transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+.lift:hover {
+  transform: translateY(-1px);
+  border-color: var(--color-brass) !important;
+  box-shadow: 0 6px 22px -10px rgba(212, 164, 74, 0.35);
+}
+
+/* ─── React Flow overrides ──────────────────────────────────────────────── */
+.react-flow__edge-path {
+  stroke: var(--color-brass);
+  stroke-opacity: 0.42;
+  stroke-width: 1.2;
+}
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: var(--color-brass-bright);
+  stroke-opacity: 0.9;
+  stroke-width: 1.5;
+}
+.react-flow__handle {
+  opacity: 0;
+  pointer-events: none;
+  border: none;
+  background: transparent;
+}
+.react-flow__controls {
+  background: var(--color-ink-1) !important;
+  border: 1px solid var(--color-rule) !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+.react-flow__controls-button {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid var(--color-rule) !important;
+  color: var(--color-bone-dim) !important;
+  width: 26px !important;
+  height: 26px !important;
+}
+.react-flow__controls-button:last-child {
+  border-bottom: none !important;
+}
+.react-flow__controls-button svg {
+  fill: currentColor !important;
+}
+.react-flow__controls-button:hover {
+  background: var(--color-ink-2) !important;
+  color: var(--color-brass-bright) !important;
+}
+.react-flow__minimap {
+  background: var(--color-ink-1) !important;
+  border: 1px solid var(--color-rule) !important;
+  border-radius: 0 !important;
+}
+.react-flow__attribution {
+  display: none !important;
+}
+.react-flow__background {
+  background: transparent !important;
+}
+
+/* ─── Recharts overrides ────────────────────────────────────────────────── */
+.recharts-text {
+  font-family: var(--font-mono) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.04em !important;
+  fill: var(--color-bone-fade) !important;
+}
+.recharts-cartesian-axis-line,
+.recharts-cartesian-axis-tick-line {
+  stroke: var(--color-rule-strong) !important;
+}
+.recharts-legend-item-text {
+  font-family: var(--font-mono) !important;
+  font-size: 10px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.18em !important;
+  color: var(--color-bone-fade) !important;
+}
+.recharts-default-tooltip {
+  background: var(--color-ink-1) !important;
+  border: 1px solid var(--color-brass-dim) !important;
+  border-radius: 0 !important;
+  font-family: var(--font-mono) !important;
+}
+
+/* Marker for fitness underline */
+.bar-track {
+  background: var(--color-rule);
 }
