@@ -10,14 +10,20 @@ export function idToString(id: unknown): string {
   return String(id);
 }
 
+// Upstream writers occasionally produce docs with null/missing date fields;
+// fall back to epoch so a single bad doc doesn't poison the whole response.
+export function toIsoString(d: Date | null | undefined): string {
+  return d instanceof Date ? d.toISOString() : new Date(0).toISOString();
+}
+
 export function toGenomeSummary(doc: GenomeDoc): GenomeSummary {
   return {
     id: idToString(doc._id),
     generation: doc.generation,
     status: doc.status,
     fitness: {
-      composite: doc.fitness.composite,
-      last_updated: doc.fitness.last_updated.toISOString(),
+      composite: doc.fitness?.composite ?? 0,
+      last_updated: toIsoString(doc.fitness?.last_updated),
     },
     retrieval_genes: doc.retrieval_genes,
     coordination_genes: doc.coordination_genes,

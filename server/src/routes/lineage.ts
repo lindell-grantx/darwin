@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { ObjectId } from 'mongodb';
 import type { LineageNode, LineageResponse } from '../../../src/contracts.ts';
 import { champions as championsCol, genomes } from '../db/client.ts';
-import { idToString } from '../db/mappers.ts';
+import { idToString, toIsoString } from '../db/mappers.ts';
 import { mockLineage, withMock } from '../db/mock.ts';
 
 export const lineage = new Hono();
@@ -57,8 +57,8 @@ lineage.get('/:genomeId', async (c) => {
       generation: doc.generation,
       parent_ids: doc.parent_ids.map(idToString),
       fitness: {
-        composite: doc.fitness.composite,
-        last_updated: doc.fitness.last_updated.toISOString(),
+        composite: doc.fitness?.composite ?? 0,
+        last_updated: toIsoString(doc.fitness?.last_updated),
       },
       retrieval_genes: doc.retrieval_genes,
       is_champion: championIds.has(idToString(doc._id)),
