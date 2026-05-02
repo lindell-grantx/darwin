@@ -72,8 +72,17 @@ async def evaluate_answer(
     cost_usd: float = 0.0,
 ) -> JudgeScores:
     """Score an answer using Anthropic when available, otherwise lexical fallback."""
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        result = await _anthropic_judge(query, answer, contexts, ground_truth)
+    from darwin.llm.vertex import is_vertex_configured
+
+    if is_vertex_configured():
+        try:
+            result = await _anthropic_judge(query, answer, contexts, ground_truth)
+        except Exception as exc:
+            # Vertex/judge call failures fall back to heuristic so evolution doesn't stall.
+            result = _heuristic_judge(query, answer, contexts, ground_truth)
+            result["rationale"] = f"Heuristic fallback after Vertex judge error: {exc}"
+        else:
+            pass
     else:
         result = _heuristic_judge(query, answer, contexts, ground_truth)
 
@@ -102,6 +111,10 @@ async def _anthropic_judge(
     contexts: list[str],
     ground_truth: str | None,
 ) -> dict[str, Any]:
+    """LLM-as-judge via Opus 4.6 on Vertex with extended thinking enabled."""
+
+    from darwin.llm.vertex import vertex_complete
+
     prompt = {
         "query": query,
         "answer": answer,
@@ -112,32 +125,26 @@ async def _anthropic_judge(
             "from 0 to 1 and a short rationale."
         ),
     }
-
-    def call() -> dict[str, Any]:
-        try:
-            import anthropic
-        except ModuleNotFoundError as exc:
-            raise RuntimeError("Install anthropic to use the Anthropic judge") from exc
-
-        client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-        message = client.messages.create(
-            model=os.environ.get("ANTHROPIC_JUDGE_MODEL", "claude-3-5-sonnet-latest"),
-            max_tokens=500,
-            temperature=0,
-            messages=[
-                {
-                    "role": "user",
-                    "content": (
-                        "Judge this RAG answer. Respond with JSON only.\n"
-                        f"{json.dumps(prompt, ensure_ascii=False)}"
-                    ),
-                }
-            ],
-        )
-        text = "".join(block.text for block in message.content if getattr(block, "type", "") == "text")
-        return _normalize_judge_payload(json.loads(text))
-
-    return await asyncio.to_thread(call)
+    text = await vertex_complete(
+        system=(
+            "You are Darwin's RAG fitness judge. You score retrieval-augmented "
+            "answers on relevance, accuracy, coverage, and groundedness. "
+            "You always reply with a single valid JSON object and no surrounding text."
+        ),
+        user=(
+            "Judge this RAG answer. Respond with JSON only.\n"
+            f"{json.dumps(prompt, ensure_ascii=False)}"
+        ),
+        max_tokens=2048,
+        thinking=True,
+    )
+    # Tolerate the model wrapping JSON in code fences.
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.strip("`")
+        if cleaned.lower().startswith("json"):
+            cleaned = cleaned[4:].lstrip()
+    return _normalize_judge_payload(json.loads(cleaned))
 
 
 def _heuristic_judge(

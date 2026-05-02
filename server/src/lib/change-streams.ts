@@ -1,5 +1,5 @@
 import type { ChangeStream } from 'mongodb';
-import { champions, fitnessEvaluations, genomes } from '../db/client.ts';
+import { champions, evolutionEvents, fitnessEvaluations, genomes } from '../db/client.ts';
 import { idToString, toIso } from '../db/mappers.ts';
 import { publish } from './event-bus.ts';
 
@@ -10,8 +10,9 @@ export function startChangeStreams(): void {
   watchGenomes();
   watchChampions();
   // `generations` is a timeseries collection; Mongo can't run a $match-aggregation
-  // change stream on it. Whatever process inserts the generation doc should also
-  // emit a `generation.evolved` event into the bus directly.
+  // change stream on it. The Python conductor mirrors every rollover into
+  // `evolution_events`, which we watch below.
+  watchEvolutionEvents();
 }
 
 export async function stopChangeStreams(): Promise<void> {
@@ -110,5 +111,22 @@ function watchChampions(): void {
     });
   });
   attachErrorLogger(stream, 'champions');
+  streams.push(stream);
+}
+
+function watchEvolutionEvents(): void {
+  const stream = evolutionEvents().watch([{ $match: { operationType: 'insert' } }]);
+  stream.on('change', (change) => {
+    if (change.operationType !== 'insert' || !change.fullDocument) return;
+    const doc = change.fullDocument;
+    if (doc.event_type !== 'generation.evolved') return;
+    publish({
+      event_type: 'generation.evolved',
+      generation: doc.generation,
+      timestamp: toIso(doc.created_at) ?? new Date().toISOString(),
+      data: doc.payload,
+    });
+  });
+  attachErrorLogger(stream, 'evolution_events');
   streams.push(stream);
 }

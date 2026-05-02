@@ -25,10 +25,12 @@ from darwin.db.client import close_client, get_db
 from darwin.db.schemas import (
     COLLECTION_CHAMPIONS,
     COLLECTION_CHUNKS,
+    COLLECTION_EVOLUTION_EVENTS,
     COLLECTION_FITNESS_EVALUATIONS,
     COLLECTION_GENERATIONS,
     COLLECTION_GENOMES,
     COLLECTION_QUERIES,
+    COLLECTION_QUERY_RUNS,
     EMBEDDING_DIMS,
     EMBEDDING_MODELS,
     model_to_field,
@@ -71,6 +73,8 @@ async def ensure_collections(db: AsyncIOMotorDatabase) -> list[str]:
         COLLECTION_QUERIES,
         COLLECTION_FITNESS_EVALUATIONS,
         COLLECTION_CHAMPIONS,
+        COLLECTION_QUERY_RUNS,
+        COLLECTION_EVOLUTION_EVENTS,
     ]
     for name in standard:
         if name in existing:
@@ -146,6 +150,24 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> dict[str, list[str]]:
             [
                 ([("genome_id", ASCENDING)], "genome_id", {"unique": True}),
                 ([("promoted_at_generation", DESCENDING)], "promoted_at_generation"),
+            ]
+        )
+    )
+
+    out[COLLECTION_QUERY_RUNS] = await db[COLLECTION_QUERY_RUNS].create_indexes(
+        _models(
+            [
+                ([("status", ASCENDING)], "status"),
+                ([("requested_at", DESCENDING)], "requested_at"),
+            ]
+        )
+    )
+
+    out[COLLECTION_EVOLUTION_EVENTS] = await db[COLLECTION_EVOLUTION_EVENTS].create_indexes(
+        _models(
+            [
+                ([("event_type", ASCENDING), ("created_at", DESCENDING)], "type_created"),
+                ([("created_at", DESCENDING)], "created_at"),
             ]
         )
     )

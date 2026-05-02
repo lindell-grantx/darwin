@@ -2,10 +2,12 @@ import { type Collection, type Db, type Document, MongoClient } from 'mongodb';
 import type {
   ChampionDoc,
   ChunkDoc,
+  EvolutionEventDoc,
   FitnessEvaluationDoc,
   GenerationDoc,
   GenomeDoc,
   QueryDoc,
+  QueryRunDoc,
 } from './types.ts';
 
 let client: MongoClient | null = null;
@@ -63,4 +65,12 @@ export function chunks(): Collection<ChunkDoc> {
 
 export function champions(): Collection<ChampionDoc> {
   return getDb().collection<ChampionDoc>('champions');
+}
+
+export function queryRuns(): Collection<QueryRunDoc> {
+  return getDb().collection<QueryRunDoc>('query_runs');
+}
+
+export function evolutionEvents(): Collection<EvolutionEventDoc> {
+  return getDb().collection<EvolutionEventDoc>('evolution_events');
 }

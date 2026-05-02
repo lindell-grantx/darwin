@@ -108,3 +108,36 @@ export interface ChampionDoc {
   summary: string | null;
   created_at: Date;
 }
+
+// ── query_runs (Hono → Python bridge) ─────────────────────────────────────────
+
+export type QueryRunStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+export interface QueryRunDoc {
+  _id: string;
+  text: string;
+  status: QueryRunStatus;
+  requested_at: Date;
+  started_at: Date | null;
+  completed_at: Date | null;
+  target_genome_id: string | null;
+  evaluation_id: string | null;
+  error: string | null;
+}
+
+// ── evolution_events (Python → Hono bridge) ──────────────────────────────────
+// Mirrors what would otherwise be a generations-collection change stream
+// (which Mongo doesn't allow on time-series collections).
+
+export type EvolutionEventDocType =
+  | 'generation.evolved'
+  | 'champion.promoted'
+  | 'population.seeded';
+
+export interface EvolutionEventDoc {
+  _id: string;
+  event_type: EvolutionEventDocType;
+  generation: number;
+  payload: Record<string, unknown>;
+  created_at: Date;
+}

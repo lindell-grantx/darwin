@@ -27,8 +27,13 @@ async def generate_candidate(
     chunks: list[RetrievedChunk],
     agent_name: str = "synthesizer",
 ) -> CandidateAnswer:
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        return await _anthropic_candidate(query, chunks, agent_name)
+    from darwin.llm.vertex import is_vertex_configured
+
+    if is_vertex_configured():
+        try:
+            return await _vertex_candidate(query, chunks, agent_name)
+        except Exception:
+            pass
     return _heuristic_candidate(query, chunks, agent_name)
 
 
@@ -37,61 +42,52 @@ async def synthesize_final_answer(
     chunks: list[RetrievedChunk],
     candidates: list[CandidateAnswer],
 ) -> str:
+    from darwin.llm.vertex import is_vertex_configured, vertex_complete
+
     if not candidates:
         return _contextual_answer(query, chunks)
-    if not os.environ.get("ANTHROPIC_API_KEY"):
+    if not is_vertex_configured():
         return max(candidates, key=lambda item: item.confidence).answer
 
     candidate_block = "\n\n".join(
         f"{candidate.agent_name} (confidence {candidate.confidence:.2f}):\n{candidate.answer}"
         for candidate in candidates
     )
-    return await _anthropic_text(
-        system="You are Darwin's final answer synthesizer.",
-        user=(
-            f"Question: {query}\n\n"
-            f"Context:\n{_context_block(chunks)}\n\n"
-            f"Candidate answers:\n{candidate_block}\n\n"
-            "Write the final answer in 1-3 concise paragraphs. Use only supported facts."
-        ),
-    )
+    try:
+        return await vertex_complete(
+            system="You are Darwin's final answer synthesizer.",
+            user=(
+                f"Question: {query}\n\n"
+                f"Context:\n{_context_block(chunks)}\n\n"
+                f"Candidate answers:\n{candidate_block}\n\n"
+                "Write the final answer in 1-3 concise paragraphs. Use only supported facts."
+            ),
+            max_tokens=2048,
+            thinking=True,
+        )
+    except Exception:
+        return max(candidates, key=lambda item: item.confidence).answer
 
 
-async def _anthropic_candidate(
+async def _vertex_candidate(
     query: str,
     chunks: list[RetrievedChunk],
     agent_name: str,
 ) -> CandidateAnswer:
-    text = await _anthropic_text(
+    from darwin.llm.vertex import vertex_complete
+
+    text = await vertex_complete(
         system=AGENT_PROMPTS.get(agent_name, AGENT_PROMPTS["synthesizer"]),
         user=(
             f"Question: {query}\n\n"
             f"Retrieved context:\n{_context_block(chunks)}\n\n"
             "Return a concise answer grounded in the context."
         ),
+        max_tokens=2048,
+        thinking=True,
     )
     confidence = _confidence_from_chunks(chunks)
     return CandidateAnswer(agent_name=agent_name, answer=text, confidence=confidence)
-
-
-async def _anthropic_text(system: str, user: str) -> str:
-    def call() -> str:
-        try:
-            import anthropic
-        except ModuleNotFoundError as exc:
-            raise RuntimeError("Install anthropic to use Anthropic generation") from exc
-
-        client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-        message = client.messages.create(
-            model=os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-latest"),
-            max_tokens=700,
-            temperature=0.2,
-            system=system,
-            messages=[{"role": "user", "content": user}],
-        )
-        return "".join(block.text for block in message.content if getattr(block, "type", "") == "text")
-
-    return await asyncio.to_thread(call)
 
 
 def _heuristic_candidate(
