@@ -8,9 +8,12 @@ version = "0.1.0"
 description = "Darwin terminal demo and smoke-test utilities"
 requires-python = ">=3.12"
 dependencies = [
+  "anthropic",
   "motor",
+  "pydantic",
   "pytest",
   "rich",
+  "voyageai",
 ]
 
 [tool.setuptools.packages.find]
