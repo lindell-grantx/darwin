@@ -22,6 +22,10 @@ COLLECTION_QUERIES = "queries"
 COLLECTION_FITNESS_EVALUATIONS = "fitness_evaluations"
 COLLECTION_CHAMPIONS = "champions"
 
+# Out-of-band collections used for the Hono ↔ Python bridge.
+COLLECTION_QUERY_RUNS = "query_runs"
+COLLECTION_EVOLUTION_EVENTS = "evolution_events"
+
 
 EmbeddingModel = Literal[
     "voyage-4-large",
@@ -219,4 +223,51 @@ class Champion(_Base):
     promoted_at_generation: int = Field(ge=0)
     composite_fitness: float
     summary: Optional[str] = None
+    created_at: datetime = Field(default_factory=_now)
+
+
+# ---------- bridge collections ----------
+
+
+QueryRunStatus = Literal["pending", "running", "completed", "failed"]
+
+
+class QueryRun(_Base):
+    """Hono → Python work item.
+
+    Hono inserts these with status="pending"; the Python worker tails the
+    collection via change stream, claims each by flipping status to "running",
+    runs the agent pipeline, and marks completed/failed.
+    """
+
+    id: str = Field(default_factory=_new_id, alias="_id")
+    text: str
+    status: QueryRunStatus = "pending"
+    requested_at: datetime = Field(default_factory=_now)
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    target_genome_id: Optional[str] = None
+    evaluation_id: Optional[str] = None
+    error: Optional[str] = None
+
+
+EvolutionEventType = Literal[
+    "generation.evolved",
+    "champion.promoted",
+    "population.seeded",
+]
+
+
+class EvolutionEvent(_Base):
+    """Out-of-band event sink.
+
+    Time-series collections can't be `watch()`-ed, so the conductor publishes
+    a duplicate doc here whenever a generation rolls. Hono's change stream
+    on this collection produces the SSE feed for the UI.
+    """
+
+    id: str = Field(default_factory=_new_id, alias="_id")
+    event_type: EvolutionEventType
+    generation: int = Field(ge=0)
+    payload: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=_now)

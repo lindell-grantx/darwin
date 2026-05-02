@@ -26,6 +26,7 @@ from darwin.db.schemas import (
     COLLECTION_GENOMES,
     Genome,
 )
+from darwin.db.schemas import COLLECTION_EVOLUTION_EVENTS
 from darwin.evolution import (
     ELITE_K,
     EVALS_PER_GEN_THRESHOLD,
@@ -176,6 +177,27 @@ async def evolve_generation(
             "created_at": datetime.now(timezone.utc),
         }
     )
+
+    # Mirror into the bridge collection so Hono's change stream can pick it up
+    # (time-series collections don't support `watch()`).
+    try:
+        await db[COLLECTION_EVOLUTION_EVENTS].insert_one(
+            {
+                "event_type": "generation.evolved",
+                "generation": generation + 1,
+                "payload": {
+                    "best_fitness": float(best_fitness),
+                    "mean_fitness": float(mean_fitness),
+                    "diversity_index": float(diversity),
+                    "n_offspring": len(offspring),
+                    "n_elites": len(elites),
+                    "elite_genome_ids": [e.id for e in elites],
+                },
+                "created_at": datetime.now(timezone.utc),
+            }
+        )
+    except Exception as exc:
+        log.warning("evolution_events publish failed for gen %d: %s", generation + 1, exc)
 
     if elites:
         try:
