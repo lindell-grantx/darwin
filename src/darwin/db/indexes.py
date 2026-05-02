@@ -123,15 +123,10 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> dict[str, list[str]]:
         )
     )
 
-    out[COLLECTION_QUERIES] = await db[COLLECTION_QUERIES].create_indexes(
-        _models(
-            [
-                ([("text", ASCENDING)], "text", {"unique": True}),
-                ([("difficulty", ASCENDING), ("domain_tags", ASCENDING)], "difficulty_tags"),
-                ([("domain_tags", ASCENDING)], "domain_tags"),
-            ]
-        )
-    )
+    # NOTE: queries indexes are owned by scripts/seed_queries.py, which creates
+    # them under pymongo's default names. Don't duplicate them here — the names
+    # would conflict and one side would crash.
+    out[COLLECTION_QUERIES] = []
 
     out[COLLECTION_FITNESS_EVALUATIONS] = await db[
         COLLECTION_FITNESS_EVALUATIONS
