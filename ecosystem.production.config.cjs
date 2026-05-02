@@ -1,28 +1,26 @@
-// PM2 ecosystem config — PRODUCTION (no watchers, built artifacts)
+// PM2 ecosystem config — PRODUCTION (server only)
 //
-// Pre-req: `npm run build` must have produced frontend/dist before starting.
+// Frontend is a STATIC BUILD served by nginx — not managed by PM2.
+// Workflow:
+//   1. `npm run build` → produces frontend/dist (Vite bakes VITE_API_URL into the bundle)
+//   2. nginx points its document root at .../darwin/frontend/dist
+//   3. `npm start` boots the Hono server only
 //
-// Usage from repo root:
-//   npm run build        → builds frontend (vite build → dist/)
-//   npm start            → server + frontend preview, NODE_ENV=production
-//   npm run start:full   → build + start, in one shot
-//   npm run stop:prod    → kill all production apps
-//
-// Same `interpreter: 'node'` pinning as dev — bun can't sneak in.
+// `interpreter: 'node'` is pinned so PM2 cannot pick `bun` even when bun is in PATH.
 
 module.exports = {
-	apps: [
-		{
-			name: "server",
-			cwd: "./server",
-			script: "src/server.ts",
-			interpreter: "node",
-			env: {
-				NODE_ENV: "production",
-				PORT: 3300,
-			},
-			max_restarts: 10,
-			restart_delay: 1000,
-		},
-	],
+  apps: [
+    {
+      name: 'server',
+      cwd: './server',
+      script: 'src/server.ts',
+      interpreter: 'node',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 3300,
+      },
+      max_restarts: 10,
+      restart_delay: 1000,
+    },
+  ],
 };
