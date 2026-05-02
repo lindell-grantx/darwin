@@ -32,12 +32,24 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from darwin.agents.runner import run_genome
+import uuid
+
+from darwin.agents.runner import evaluate as agent_evaluate, run_genome
 from darwin.db.client import close_client, get_db
 from darwin.db.schemas import (
     COLLECTION_GENOMES,
     COLLECTION_QUERIES,
 )
+
+
+class _MinimalBlackboard:
+    """Adapter for agents.runner.evaluate, which expects a blackboard with snapshot_for()."""
+
+    def __init__(self, run_id: str) -> None:
+        self.run_id = run_id
+
+    def snapshot_for(self, genome_id: str) -> dict[str, Any]:
+        return {"run_id": self.run_id, "source": "darwin-api"}
 
 
 log = logging.getLogger("darwin.api")
@@ -235,13 +247,56 @@ async def evaluate(req: EvaluateRequest):
     genome = await _pick_genome(db, req.genome_id)
     query = await _upsert_query(db, req.text)
 
+    run_id = str(uuid.uuid4())
+
     try:
-        result = await run_genome(
-            req.text,
-            genome,
-            ground_truth=query.get("ground_truth"),
-            persist=req.persist,
-        )
+        if req.persist:
+            # Use the canonical evaluate() entry point so the persisted doc has
+            # the full shape the conductor's aggregate expects (top-level
+            # `generation` + `composite_fitness`, query_id, components, etc.).
+            doc = await agent_evaluate(
+                genome,
+                query,
+                run_id=run_id,
+                blackboard=_MinimalBlackboard(run_id),
+            )
+            # Reconstruct an AgentRunResult-like object from the doc for the response.
+            class _R:
+                pass
+            result = _R()
+            result.run_id = run_id
+            result.answer = doc["generated_answer"]
+            # Reconstruct chunks from retrieval_trace
+            class _Chunk:
+                def __init__(self, t):
+                    self.chunk_id = str(t.get("chunk_id"))
+                    self.score = float(t.get("score", 0.0))
+                    self.text = ""
+            result.chunks = [_Chunk(t) for t in doc.get("retrieval_trace", [])]
+            # Pull components + groundedness from the inner fitness sub-doc
+            inner = doc.get("fitness", {}) if isinstance(doc.get("fitness"), dict) else {}
+            comp = doc.get("components", {}) or inner.get("components", {})
+
+            class _F:
+                pass
+            result.fitness = _F()
+            result.fitness.relevance = float(comp.get("relevance", 0.0))
+            result.fitness.accuracy = float(comp.get("accuracy", 0.0))
+            result.fitness.coverage = float(comp.get("coverage", 0.0))
+            result.fitness.groundedness = float(inner.get("groundedness", 0.0))
+            result.fitness.latency_ms = float(comp.get("latency_ms", 0.0))
+            result.fitness.cost_usd = float(comp.get("cost_usd", 0.0))
+            result.fitness.composite = float(doc.get("composite_fitness", inner.get("composite", 0.0)))
+            result.fitness.rationale = inner.get("rationale", "")
+        else:
+            # Read-only preview path: don't pollute fitness_evaluations.
+            result = await run_genome(
+                req.text,
+                genome,
+                ground_truth=query.get("ground_truth"),
+                persist=False,
+                run_id=run_id,
+            )
     except Exception as exc:
         log.exception("evaluate failed: %s", exc)
         raise HTTPException(status_code=502, detail=f"evaluation_failed: {exc}")
