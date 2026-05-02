@@ -11,31 +11,18 @@
 // Same `interpreter: 'node'` pinning as dev — bun can't sneak in.
 
 module.exports = {
-  apps: [
-    {
-      name: 'server',
-      cwd: './server',
-      script: 'src/server.ts',
-      interpreter: 'node',
-      env: {
-        NODE_ENV: 'production',
-        PORT: 3300,
-      },
-      max_restarts: 10,
-      restart_delay: 1000,
-    },
-    {
-      name: 'frontend',
-      cwd: './frontend',
-      script: './node_modules/.bin/vite',
-      interpreter: 'node',
-      args: 'preview --host --port 5173',
-      env: {
-        NODE_ENV: 'production',
-        VITE_API_URL: 'http://localhost:3300',
-      },
-      max_restarts: 10,
-      restart_delay: 1000,
-    },
-  ],
+	apps: [
+		{
+			name: "server",
+			cwd: "./server",
+			script: "src/server.ts",
+			interpreter: "node",
+			env: {
+				NODE_ENV: "production",
+				PORT: 3300,
+			},
+			max_restarts: 10,
+			restart_delay: 1000,
+		},
+	],
 };
