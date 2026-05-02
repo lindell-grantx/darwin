@@ -6,6 +6,13 @@ dist/
 .DS_Store
 .idea/
 .vscode/
+
+# Python
+.venv/
+venv/
 __pycache__/
 *.py[cod]
+*.pyo
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
