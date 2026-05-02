@@ -11,6 +11,7 @@ seed content without creating duplicates.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 from datetime import datetime, timezone
@@ -77,7 +78,7 @@ def load_queries(path: Path) -> list[dict[str, Any]]:
     return queries
 
 
-def seed_queries(
+async def seed_queries(
     mongo_uri: str,
     database_name: str,
     collection_name: str,
@@ -93,19 +94,27 @@ def seed_queries(
             print(f"- [{query['difficulty']}] {query['text']} ({tags})")
         return
 
-    from pymongo import MongoClient, UpdateOne
+    from motor.motor_asyncio import AsyncIOMotorClient
 
     now = datetime.now(timezone.utc)
+    client = AsyncIOMotorClient(mongo_uri)
+    collection = client[database_name][collection_name]
 
-    operations = []
-    for query in queries:
-        document = {
-            **query,
-            "seeded": True,
-            "updated_at": now,
-        }
-        operations.append(
-            UpdateOne(
+    try:
+        await collection.create_index("text", unique=True)
+        await collection.create_index([("difficulty", 1), ("domain_tags", 1)])
+        await collection.create_index("domain_tags")
+
+        matched = 0
+        modified = 0
+        upserted = 0
+        for query in queries:
+            document = {
+                **query,
+                "seeded": True,
+                "updated_at": now,
+            }
+            result = await collection.update_one(
                 {"text": query["text"]},
                 {
                     "$set": document,
@@ -113,21 +122,18 @@ def seed_queries(
                 },
                 upsert=True,
             )
+            matched += result.matched_count
+            modified += result.modified_count
+            upserted += 1 if result.upserted_id is not None else 0
+
+        print(
+            "Seeded queries: "
+            f"matched={matched}, "
+            f"modified={modified}, "
+            f"upserted={upserted}"
         )
-    client = MongoClient(mongo_uri)
-    collection = client[database_name][collection_name]
-
-    collection.create_index("text", unique=True)
-    collection.create_index([("difficulty", 1), ("domain_tags", 1)])
-    collection.create_index("domain_tags")
-
-    result = collection.bulk_write(operations, ordered=False)
-    print(
-        "Seeded queries: "
-        f"matched={result.matched_count}, "
-        f"modified={result.modified_count}, "
-        f"upserted={len(result.upserted_ids)}"
-    )
+    finally:
+        client.close()
 
 
 def parse_args() -> argparse.Namespace:
@@ -151,12 +157,14 @@ def main() -> None:
             "Missing MongoDB URI. Set MONGO_URI/MONGODB_URI or pass --mongo-uri."
         )
 
-    seed_queries(
-        mongo_uri=args.mongo_uri or "",
-        database_name=args.database,
-        collection_name=args.collection,
-        queries_path=args.queries,
-        dry_run=args.dry_run,
+    asyncio.run(
+        seed_queries(
+            mongo_uri=args.mongo_uri or "",
+            database_name=args.database,
+            collection_name=args.collection,
+            queries_path=args.queries,
+            dry_run=args.dry_run,
+        )
     )
 
 
