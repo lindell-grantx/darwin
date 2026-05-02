@@ -1,7 +1,7 @@
 """Deterministic terminal run for recording Darwin's backup demo.
 
 Run with:
-    PYTHONPATH=src python -m darwin.demo.scripted_run --seed 42 --generations 5
+    python -m darwin.demo.scripted_run --seed 42 --generations 5
 """
 
 from __future__ import annotations

@@ -1,0 +1,3 @@
+motor
+pytest
+rich

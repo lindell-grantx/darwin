@@ -32,12 +32,18 @@ If neither API nor MongoDB is configured, the demo falls back to deterministic p
 
 ## Running The Demo
 
-Because the repo currently uses a `src/` Python layout without package metadata, run these commands with `PYTHONPATH=src`.
+Install the local Python package first:
+
+```bash
+python3 -m pip install -e .
+```
+
+After that, run the demo commands directly with `python3 -m ...`.
 
 ### One-Shot Preview
 
 ```bash
-PYTHONPATH=src python3 -m darwin.demo.narrate --preview --once
+python3 -m darwin.demo.narrate --preview --once
 ```
 
 Use this for a quick sanity check. It renders one self-explanatory snapshot.
@@ -45,7 +51,7 @@ Use this for a quick sanity check. It renders one self-explanatory snapshot.
 ### Live One-Shot
 
 ```bash
-PYTHONPATH=src python3 -m darwin.demo.narrate --live --once
+python3 -m darwin.demo.narrate --live --once
 ```
 
 If `DARWIN_API_URL` or `MONGODB_URI` is configured, this reads live state. Otherwise it uses deterministic preview data.
@@ -53,7 +59,7 @@ If `DARWIN_API_URL` or `MONGODB_URI` is configured, this reads live state. Other
 ### Scripted Recording Run
 
 ```bash
-PYTHONPATH=src python3 -m darwin.demo.scripted_run --seed 42 --generations 5 --delay 0.5 --plain
+python3 -m darwin.demo.scripted_run --seed 42 --generations 5 --delay 0.5 --plain
 ```
 
 Use this for rehearsal or backup recording. It prints a deterministic generation-by-generation story from generation 0 to generation 5.
@@ -62,7 +68,7 @@ Use this for rehearsal or backup recording. It prints a deterministic generation
 
 ```bash
 DARWIN_API_URL=http://localhost:3000 \
-PYTHONPATH=src python3 -m darwin.demo.narrate --live --once
+python3 -m darwin.demo.narrate --live --once
 ```
 
 This reads from the backend API.
@@ -71,22 +77,16 @@ This reads from the backend API.
 
 ```bash
 MONGODB_URI="mongodb+srv://..." \
-PYTHONPATH=src python3 -m darwin.demo.narrate --live --once
+python3 -m darwin.demo.narrate --live --once
 ```
 
 This reads directly from MongoDB. It requires `motor`.
 
 ## Rich vs Plain Output
 
-The demo uses Rich when `rich` is installed.
+The demo uses Rich for the polished dashboard layout. Rich is included in the Python project dependencies.
 
-If `rich` is not installed, it falls back to plain terminal output. The plain fallback is intentional so the demo still runs on a fresh machine.
-
-Install Rich to enable the polished dashboard layout:
-
-```bash
-python3 -m pip install rich
-```
+If Rich is not available on a fresh machine, the code falls back to plain terminal output instead of crashing.
 
 ## How To Explain The Output
 
@@ -164,8 +164,8 @@ Darwin is an evolutionary adaptive retrieval system. Instead of hand-designing o
 Commands used to verify this implementation:
 
 ```bash
-PYTHONPATH=src python3 -m py_compile src/darwin/demo/narrate.py src/darwin/demo/scripted_run.py
-PYTHONPATH=src python3 -m darwin.demo.narrate --preview --once
-PYTHONPATH=src python3 -m darwin.demo.narrate --live --once
-PYTHONPATH=src python3 -m darwin.demo.scripted_run --seed 42 --generations 5 --delay 0.5 --plain
+python3 -m py_compile src/darwin/demo/narrate.py src/darwin/demo/scripted_run.py
+python3 -m darwin.demo.narrate --preview --once
+python3 -m darwin.demo.narrate --live --once
+python3 -m darwin.demo.scripted_run --seed 42 --generations 5 --delay 0.5 --plain
 ```

@@ -1,10 +1,10 @@
 """Rich terminal dashboard for Darwin's evolution demo.
 
 Run live mode with a configured backend or database:
-    PYTHONPATH=src python -m darwin.demo.narrate --live
+    python -m darwin.demo.narrate --live
 
 Run a deterministic preview without external services:
-    PYTHONPATH=src python -m darwin.demo.narrate --preview
+    python -m darwin.demo.narrate --preview
 """
 
 from __future__ import annotations

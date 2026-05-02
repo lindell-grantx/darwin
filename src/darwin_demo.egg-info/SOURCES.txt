@@ -1,0 +1,11 @@
+pyproject.toml
+src/darwin/__init__.py
+src/darwin/api/contracts.py
+src/darwin/demo/__init__.py
+src/darwin/demo/narrate.py
+src/darwin/demo/scripted_run.py
+src/darwin_demo.egg-info/PKG-INFO
+src/darwin_demo.egg-info/SOURCES.txt
+src/darwin_demo.egg-info/dependency_links.txt
+src/darwin_demo.egg-info/requires.txt
+src/darwin_demo.egg-info/top_level.txt
