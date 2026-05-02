@@ -68,7 +68,7 @@ async def run_genome(
     coordination_genes = dict(genome.get("coordination_genes", {}))
 
     chunks = await retrieve(query, retrieval_genes)
-    answer, candidates = await coordinate(query, chunks, coordination_genes)
+    answer, candidates = await coordinate(query, chunks, coordination_genes, genome=genome)
     latency_ms = (time.perf_counter() - started) * 1000
     fitness = await evaluate_answer(
         query=query,

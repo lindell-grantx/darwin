@@ -56,7 +56,7 @@ def model_to_field(model: str) -> str:
 ChunkSize = Literal[128, 256, 512, 1024]
 QueryTransform = Literal["none", "hyde", "multi_query", "step_back"]
 RerankStrategy = Literal["none", "rrf", "voyage-rerank-2"]
-SourceTag = Literal["mongodb", "voyage", "langchain"]
+SourceTag = Literal["mongodb", "voyage", "langchain", "anthropic", "github"]
 CoordinationProtocol = Literal["solo", "vote", "consult", "debate"]
 GeneratorModel = Literal[
     "claude-haiku-4-5-20251001",
@@ -64,6 +64,14 @@ GeneratorModel = Literal[
 ]
 GenomeStatus = Literal["alive", "retired", "champion"]
 Difficulty = Literal["easy", "medium", "hard"]
+
+# Agentic genes — control how the generator actually composes an answer.
+# These materially change the runtime path, unlike `system_style` (cosmetic).
+ReasoningPattern = Literal[
+    "direct",                # one-shot answer from chunks (cheapest, default)
+    "chain_of_thought",      # explicit step-by-step before final answer
+    "reflect_then_answer",   # draft → self-critique → revised final answer (single LLM call)
+]
 
 
 def _now() -> datetime:
@@ -104,6 +112,9 @@ class GenerationGenes(_Base):
     temperature: float = Field(ge=0.0, le=1.5)
     max_tokens: int = Field(ge=64, le=4_096)
     system_style: Literal["concise", "detailed", "stepwise"]
+    # Agentic genes — additive defaults so existing docs validate without migration.
+    reasoning_pattern: ReasoningPattern = "direct"
+    self_critique: bool = False
 
 
 # ---------- core docs ----------

@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from darwin.db.client import close_client, get_db  # noqa: E402
 from darwin.db.schemas import EMBEDDING_MODELS, model_to_field  # noqa: E402
-from darwin.retrieval.embedder import embed_documents  # noqa: E402
+from darwin.retrieval.embedder import embed_batch  # noqa: E402
 
 
 log = logging.getLogger(__name__)
@@ -42,7 +42,6 @@ CORPUS_URLS: dict[str, list[str]] = {
         "https://www.mongodb.com/docs/atlas/atlas-vector-search/tutorials/vector-search-quick-start/",
         "https://www.mongodb.com/docs/atlas/atlas-vector-search/create-embeddings/",
         "https://www.mongodb.com/docs/atlas/atlas-vector-search/crud-embeddings/create-embeddings-automatic/",
-        "https://www.mongodb.com/docs/atlas/atlas-vector-search/ann-search-vs-enn-search/",
         "https://www.mongodb.com/docs/atlas/atlas-vector-search/hybrid-search/",
         "https://www.mongodb.com/docs/atlas/atlas-vector-search/manage-indexes/",
         "https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-quantization/",
@@ -51,6 +50,10 @@ CORPUS_URLS: dict[str, list[str]] = {
         "https://www.mongodb.com/docs/manual/core/timeseries-collections/",
         "https://www.mongodb.com/docs/manual/aggregation/",
         "https://www.mongodb.com/docs/atlas/atlas-vector-search/tutorials/auto-quantize-with-voyage-ai/",
+        "https://www.mongodb.com/docs/manual/core/replica-set-members/",
+        "https://www.mongodb.com/docs/manual/core/transactions/",
+        "https://www.mongodb.com/docs/manual/core/authentication/",
+        "https://www.mongodb.com/docs/manual/administration/monitoring/",
     ],
     "voyage": [
         "https://docs.voyageai.com/docs/embeddings",
@@ -79,6 +82,28 @@ CORPUS_URLS: dict[str, list[str]] = {
         "https://python.langchain.com/docs/concepts/runnables/",
         "https://python.langchain.com/docs/tutorials/rag/",
         "https://python.langchain.com/docs/tutorials/qa_chat_history/",
+        "https://python.langchain.com/docs/tutorials/agents/",
+        "https://python.langchain.com/docs/tutorials/llm_chain/",
+        "https://python.langchain.com/docs/integrations/vectorstores/mongodb_atlas/",
+    ],
+    "anthropic": [
+        "https://www.anthropic.com/news/contextual-retrieval",
+        "https://www.anthropic.com/research/building-effective-agents",
+        "https://www.anthropic.com/engineering/built-multi-agent-research-system",
+        "https://www.anthropic.com/news/visible-extended-thinking",
+        "https://www.anthropic.com/engineering/claude-code-best-practices",
+    ],
+    "github": [
+        "https://github.com/langchain-ai/langgraph",
+        "https://github.com/langchain-ai/langchain",
+        "https://github.com/voyage-ai/voyageai-python",
+        "https://github.com/mongodb/mongo-python-driver",
+        "https://raw.githubusercontent.com/langchain-ai/langgraph/main/README.md",
+        "https://raw.githubusercontent.com/langchain-ai/langchain/master/README.md",
+        "https://raw.githubusercontent.com/voyage-ai/voyageai-python/main/README.md",
+        "https://raw.githubusercontent.com/mongodb/mongo-python-driver/master/README.md",
+        "https://raw.githubusercontent.com/run-llama/llama_index/main/README.md",
+        "https://raw.githubusercontent.com/chroma-core/chroma/main/README.md",
     ],
 }
 
@@ -157,14 +182,24 @@ async def fetch_all(urls: dict[str, list[str]]) -> list[tuple[str, str, str]]:
     return [r for r in results if r is not None]
 
 
+EMBED_BATCH_LIMIT = 1000  # Voyage API per-call cap
+
+
+async def _embed_one_model_batched(texts: list[str], model: str) -> list[list[float]]:
+    """Embed `texts` in batches of <= EMBED_BATCH_LIMIT (Voyage's per-call cap)."""
+
+    out: list[list[float]] = []
+    for start in range(0, len(texts), EMBED_BATCH_LIMIT):
+        batch = texts[start : start + EMBED_BATCH_LIMIT]
+        out.extend(await embed_batch(batch, model))
+    return out
+
+
 async def embed_all_models(texts: list[str]) -> dict[str, list[list[float]]]:
-    """Run all 4 model embedding passes in parallel via thread executor."""
+    """Run all 4 model embedding passes in parallel (each model batched internally)."""
 
     log.info("embedding %d chunks across %d models in parallel", len(texts), len(EMBEDDING_MODELS))
-    tasks = {
-        model: asyncio.to_thread(embed_documents, texts, model)
-        for model in EMBEDDING_MODELS
-    }
+    tasks = {model: _embed_one_model_batched(texts, model) for model in EMBEDDING_MODELS}
     results = await asyncio.gather(*tasks.values())
     return dict(zip(tasks.keys(), results))
 

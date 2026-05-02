@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import random
-from typing import Optional
+from typing import Optional, get_args
 
 from darwin.db.schemas import (
     EMBEDDING_MODELS,
@@ -11,6 +11,7 @@ from darwin.db.schemas import (
     FitnessSummary,
     GenerationGenes,
     Genome,
+    ReasoningPattern,
     RetrievalGenes,
 )
 
@@ -28,6 +29,7 @@ _GENERATOR_MODELS: tuple[str, ...] = (
 )
 _SYSTEM_STYLES: tuple[str, ...] = ("concise", "detailed", "stepwise")
 _SOURCE_TAGS: tuple[str, ...] = ("mongodb", "voyage", "langchain")
+_REASONING_PATTERNS: tuple[str, ...] = get_args(ReasoningPattern)
 
 _FLOAT_BOUNDS: dict[str, tuple[float, float]] = {
     "chunk_overlap": (0.0, 0.5),
@@ -214,12 +216,22 @@ def mutate(
         _swap_categorical(gen.system_style, _SYSTEM_STYLES, rng)
         if _maybe(rng, rate) else gen.system_style
     )
+    reasoning_pattern = (
+        _swap_categorical(gen.reasoning_pattern, _REASONING_PATTERNS, rng)
+        if _maybe(rng, rate) else gen.reasoning_pattern
+    )
+    self_critique = (
+        (not gen.self_critique)
+        if _maybe(rng, rate) else gen.self_critique
+    )
 
     new_gen = GenerationGenes(
         model=model,
         temperature=temperature,
         max_tokens=max_tokens,
         system_style=system_style,
+        reasoning_pattern=reasoning_pattern,
+        self_critique=self_critique,
     )
 
     return Genome(
