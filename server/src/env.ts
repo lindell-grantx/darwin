@@ -1,5 +1,5 @@
 function readPort(): number {
-  const raw = process.env.PORT ?? '3001';
+  const raw = process.env.PORT ?? '3300';
   const n = Number(raw);
   if (!Number.isInteger(n) || n <= 0) {
     throw new Error(`Invalid PORT: ${raw}`);

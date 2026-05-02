@@ -37,22 +37,22 @@ async function post<T, B>(path: string, body: B): Promise<T> {
 
 export async function getFitnessCurve(): Promise<FitnessCurveResponse> {
   if (USE_MOCKS) return mockFitnessCurve;
-  return get('/api/fitness-curve');
+  return get('/fitness-curve');
 }
 
 export async function getPopulation(): Promise<PopulationResponse> {
   if (USE_MOCKS) return mockPopulation;
-  return get('/api/population');
+  return get('/population');
 }
 
 export async function getLineage(genomeId: string): Promise<LineageResponse> {
   if (USE_MOCKS) return mockLineage(genomeId);
-  return get(`/api/lineage/${encodeURIComponent(genomeId)}`);
+  return get(`/lineage/${encodeURIComponent(genomeId)}`);
 }
 
 export async function getChampions(): Promise<Champion[]> {
   if (USE_MOCKS) return mockChampions;
-  return get('/api/champions');
+  return get('/champions');
 }
 
 export async function postQuery(text: string): Promise<QueryResponse> {
@@ -60,5 +60,5 @@ export async function postQuery(text: string): Promise<QueryResponse> {
     await new Promise((r) => setTimeout(r, 700));
     return { ...mockQueryResponse, answer: `[mock] ${mockQueryResponse.answer}\n\nQuery: ${text}` };
   }
-  return post('/api/query', { text });
+  return post('/query', { text });
 }

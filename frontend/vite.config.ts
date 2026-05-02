@@ -20,10 +20,7 @@ export default defineConfig({
       // Allow importing src/contracts.ts from the parent directory.
       allow: [path.resolve(__dirname, '..')],
     },
-    proxy: {
-      // Backend (Hono) runs on PORT=3001 by default.
-      '/api': { target: 'http://localhost:3001', changeOrigin: true },
-      '/events': { target: 'http://localhost:3001', changeOrigin: true, ws: true },
-    },
+    // No proxy: the client talks to the API directly via VITE_API_URL.
+    // Server handles CORS (see server/src/app.ts).
   },
 });

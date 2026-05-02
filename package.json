@@ -1,0 +1,25 @@
+{
+  "name": "darwin",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Darwin — Evolutionary Adaptive Retrieval (MongoDB Agentic Evolution Hackathon, London 2026)",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "pm2 start ecosystem.config.cjs --no-daemon",
+    "dev:server": "pm2 start ecosystem.config.cjs --only server --no-daemon",
+    "dev:frontend": "pm2 start ecosystem.config.cjs --only frontend --no-daemon",
+    "build": "npm --prefix frontend run build",
+    "start": "pm2 start ecosystem.production.config.cjs --no-daemon",
+    "start:full": "npm run build && npm start",
+    "stop": "pm2 delete ecosystem.config.cjs",
+    "stop:prod": "pm2 delete ecosystem.production.config.cjs",
+    "status": "pm2 status",
+    "logs": "pm2 logs",
+    "install:all": "npm install && npm --prefix server install && npm --prefix frontend install"
+  },
+  "devDependencies": {
+    "pm2": "^6.0.14"
+  }
+}
