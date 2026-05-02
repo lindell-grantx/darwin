@@ -28,8 +28,12 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+import json
+import time
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel, Field
 
 import uuid
@@ -321,6 +325,169 @@ async def evaluate(req: EvaluateRequest):
         rationale=result.fitness.rationale,
         timestamp=_now_iso(),
     )
+
+
+@app.post("/evaluate-stream")
+async def evaluate_stream(req: EvaluateRequest):
+    """SSE streaming variant of /evaluate.
+
+    Event types:
+      - `progress`  {stage: 'retrieving' | 'generating' | 'judging' | 'persisting'}
+      - `genome`    {id, generation, status, retrieval_genes, ...}
+      - `chunk`     {chunk_id, score, position, text_preview}  (one per retrieved chunk)
+      - `token`     {delta: '...'}                              (text deltas as Vertex streams)
+      - `done`      {run_id, composite_fitness, fitness, rationale, retrieval_trace, answer}
+      - `error`     {message}
+    """
+
+    db = await get_db()
+    genome = await _pick_genome(db, req.genome_id)
+    query_doc = await _upsert_query(db, req.text)
+
+    from darwin.agents.blackboard import CandidateAnswer
+    from darwin.agents.coordinator import coordinate
+    from darwin.fitness.judge import evaluate_answer
+    from darwin.llm.vertex import vertex_stream
+    from darwin.retrieval.retriever import retrieve
+
+    run_id = str(uuid.uuid4())
+
+    async def _events():
+        try:
+            yield {"event": "progress", "data": json.dumps({"stage": "starting"})}
+
+            yield {"event": "genome", "data": json.dumps({
+                "id": str(genome["_id"]),
+                "generation": genome.get("generation", 0),
+                "retrieval_genes": genome.get("retrieval_genes", {}),
+                "coordination_genes": genome.get("coordination_genes", {}),
+                "generation_genes": genome.get("generation_genes", {}),
+                "composite_fitness": float(genome.get("fitness", {}).get("composite", 0.0)),
+            })}
+
+            yield {"event": "progress", "data": json.dumps({"stage": "retrieving"})}
+            chunks = await retrieve(req.text, dict(genome.get("retrieval_genes", {})))
+            for i, c in enumerate(chunks, start=1):
+                yield {"event": "chunk", "data": json.dumps({
+                    "chunk_id": str(c.chunk_id),
+                    "score": float(c.score),
+                    "position": i,
+                    "text_preview": (c.text or "")[:120],
+                })}
+
+            yield {"event": "progress", "data": json.dumps({"stage": "generating"})}
+
+            t0 = time.perf_counter()
+            gen_genes = genome.get("generation_genes", {})
+            pattern = gen_genes.get("reasoning_pattern", "direct")
+            context_block = "\n\n".join(f"[{i}] {c.text}" for i, c in enumerate(chunks, start=1))
+
+            if pattern == "chain_of_thought":
+                user_prompt = (
+                    f"Question: {req.text}\n\n"
+                    f"Context:\n{context_block}\n\n"
+                    "Think step by step about what the context tells us, then output your final "
+                    "answer prefixed with 'Final answer:'"
+                )
+            elif pattern == "reflect_then_answer":
+                user_prompt = (
+                    f"Question: {req.text}\n\n"
+                    f"Context:\n{context_block}\n\n"
+                    "1. Draft an answer.\n2. Critique your draft for accuracy and groundedness.\n"
+                    "3. Output the revised final answer prefixed with 'Final answer:'."
+                )
+            else:
+                user_prompt = (
+                    f"Question: {req.text}\n\n"
+                    f"Context:\n{context_block}\n\n"
+                    "Answer concisely and accurately, grounded only in the context above."
+                )
+
+            buffer: list[str] = []
+            async for delta in vertex_stream(
+                system="You answer questions using the retrieved context. Cite chunk indices like [3] when relevant.",
+                user=user_prompt,
+                max_tokens=2048,
+                thinking=True,
+            ):
+                buffer.append(delta)
+                yield {"event": "token", "data": json.dumps({"delta": delta})}
+
+            full_answer = "".join(buffer)
+            # Strip the "Final answer:" prefix if present
+            if "Final answer:" in full_answer:
+                idx = full_answer.rfind("Final answer:")
+                visible_answer = full_answer[idx + len("Final answer:"):].strip()
+            else:
+                visible_answer = full_answer.strip()
+
+            latency_ms = (time.perf_counter() - t0) * 1000
+
+            yield {"event": "progress", "data": json.dumps({"stage": "judging"})}
+
+            judge_scores = await evaluate_answer(
+                query=req.text,
+                answer=visible_answer,
+                contexts=[c.text for c in chunks],
+                ground_truth=query_doc.get("ground_truth"),
+                latency_ms=latency_ms,
+                cost_usd=0.0,
+            )
+
+            if req.persist:
+                yield {"event": "progress", "data": json.dumps({"stage": "persisting"})}
+                from darwin.db.schemas import COLLECTION_FITNESS_EVALUATIONS
+                from datetime import datetime, timezone
+                now = datetime.now(timezone.utc)
+                eval_doc = {
+                    "_id": run_id,
+                    "run_id": run_id,
+                    "genome_id": str(genome["_id"]),
+                    "query_id": str(query_doc.get("_id", req.text)),
+                    "generation": genome.get("generation", 0),
+                    "generated_answer": visible_answer,
+                    "answer": visible_answer,
+                    "retrieval_trace": [
+                        {"chunk_id": str(c.chunk_id), "score": float(c.score), "position": i}
+                        for i, c in enumerate(chunks, start=1)
+                    ],
+                    "coordination_trace": {"source": "evaluate-stream"},
+                    "components": judge_scores.as_components(),
+                    "composite_fitness": float(judge_scores.composite),
+                    "fitness": {
+                        "components": judge_scores.as_components(),
+                        "groundedness": judge_scores.groundedness,
+                        "composite": judge_scores.composite,
+                        "rationale": judge_scores.rationale,
+                    },
+                    "created_at": now,
+                    "timestamp": now,
+                }
+                try:
+                    await db[COLLECTION_FITNESS_EVALUATIONS].insert_one(eval_doc)
+                except Exception as exc:
+                    log.warning("persist failed for run %s: %s", run_id, exc)
+
+            yield {"event": "done", "data": json.dumps({
+                "run_id": run_id,
+                "answer": visible_answer,
+                "composite_fitness": float(judge_scores.composite),
+                "fitness": {
+                    "relevance": judge_scores.relevance,
+                    "accuracy": judge_scores.accuracy,
+                    "coverage": judge_scores.coverage,
+                    "groundedness": judge_scores.groundedness,
+                    "latency_ms": judge_scores.latency_ms,
+                    "cost_usd": judge_scores.cost_usd,
+                },
+                "rationale": judge_scores.rationale,
+                "timestamp": _now_iso(),
+            })}
+        except Exception as exc:
+            log.exception("evaluate-stream failed")
+            yield {"event": "error", "data": json.dumps({"message": str(exc)[:500]})}
+
+    return EventSourceResponse(_events())
 
 
 @app.get("/population")
