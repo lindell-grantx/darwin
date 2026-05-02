@@ -32,7 +32,24 @@ def tournament_select(
     guarantees `len(candidates) >= tournament_size`.
     """
 
-    raise NotImplementedError("B3: implement tournament_select")
+    if k <= 0:
+        return []
+    rng = rng if rng is not None else random.Random()
+
+    winners: list[Genome] = []
+    chosen_ids: set[str] = set()
+    pool_size = len({g.id for g in candidates})
+    while len(winners) < k:
+        sampled = [rng.choice(candidates) for _ in range(tournament_size)]
+        winner = max(sampled, key=lambda g: g.fitness.composite)
+        # Once we've exhausted the distinct-id pool, allow duplicate winners so
+        # the loop always terminates — standard tournament selection lets a fit
+        # parent mate more than once.
+        if winner.id in chosen_ids and len(chosen_ids) < pool_size:
+            continue
+        winners.append(winner)
+        chosen_ids.add(winner.id)
+    return winners
 
 
 def elite_select(candidates: list[Genome], k: int) -> list[Genome]:
@@ -41,7 +58,10 @@ def elite_select(candidates: list[Genome], k: int) -> list[Genome]:
     Pure / deterministic: same input → same output. Returns at most `k`.
     """
 
-    raise NotImplementedError("B3: implement elite_select")
+    if k <= 0:
+        return []
+    ordered = sorted(candidates, key=lambda g: (-g.fitness.composite, g.id))
+    return ordered[:k]
 
 
 async def aggregate_mean_fitness_by_generation(
@@ -58,4 +78,17 @@ async def aggregate_mean_fitness_by_generation(
     typically defaults to 0.0).
     """
 
-    raise NotImplementedError("B3: implement aggregate_mean_fitness_by_generation")
+    pipeline = [
+        {"$match": {"generation": generation}},
+        {
+            "$group": {
+                "_id": "$genome_id",
+                "mean": {"$avg": "$composite_fitness"},
+                "n": {"$sum": 1},
+            }
+        },
+    ]
+    result: dict[str, float] = {}
+    async for doc in db["fitness_evaluations"].aggregate(pipeline):
+        result[doc["_id"]] = float(doc["mean"])
+    return result

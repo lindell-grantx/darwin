@@ -5,10 +5,43 @@ from __future__ import annotations
 import random
 from typing import Optional
 
-from darwin.db.schemas import Genome
+from darwin.db.schemas import (
+    CoordinationGenes,
+    FitnessSummary,
+    GenerationGenes,
+    Genome,
+    RetrievalGenes,
+)
 
 
 __all__ = ["uniform_crossover"]
+
+
+_RETRIEVAL_FIELDS = (
+    "embedding_model",
+    "chunk_size",
+    "chunk_overlap",
+    "query_transform",
+    "rerank",
+    "confidence_threshold",
+    "top_k",
+)
+_COORDINATION_FIELDS = (
+    "protocol",
+    "consult_threshold",
+    "timeout_ms",
+    "debate_rounds",
+)
+_GENERATION_FIELDS = (
+    "model",
+    "temperature",
+    "max_tokens",
+    "system_style",
+)
+
+
+def _pick(rng: random.Random, a, b):
+    return a if rng.random() < 0.5 else b
 
 
 def uniform_crossover(
@@ -33,4 +66,34 @@ def uniform_crossover(
     to p1's full list).
     """
 
-    raise NotImplementedError("B2: implement uniform_crossover")
+    rng = rng if rng is not None else random.Random()
+
+    retrieval_kwargs = {
+        field: _pick(rng, getattr(p1.retrieval_genes, field), getattr(p2.retrieval_genes, field))
+        for field in _RETRIEVAL_FIELDS
+    }
+
+    union = list(dict.fromkeys(list(p1.retrieval_genes.source_routing) + list(p2.retrieval_genes.source_routing)))
+    chosen = [tag for tag in union if rng.random() < 0.5]
+    if not chosen:
+        chosen = list(p1.retrieval_genes.source_routing)
+    retrieval_kwargs["source_routing"] = chosen
+
+    coordination_kwargs = {
+        field: _pick(rng, getattr(p1.coordination_genes, field), getattr(p2.coordination_genes, field))
+        for field in _COORDINATION_FIELDS
+    }
+    generation_kwargs = {
+        field: _pick(rng, getattr(p1.generation_genes, field), getattr(p2.generation_genes, field))
+        for field in _GENERATION_FIELDS
+    }
+
+    return Genome(
+        generation=generation,
+        status="alive",
+        parent_ids=[p1.id, p2.id],
+        retrieval_genes=RetrievalGenes(**retrieval_kwargs),
+        coordination_genes=CoordinationGenes(**coordination_kwargs),
+        generation_genes=GenerationGenes(**generation_kwargs),
+        fitness=FitnessSummary(),
+    )

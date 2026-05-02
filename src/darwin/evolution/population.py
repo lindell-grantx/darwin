@@ -7,7 +7,14 @@ from typing import Optional
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from darwin.db.schemas import Champion, Genome
+from darwin.db.schemas import (
+    COLLECTION_CHAMPIONS,
+    COLLECTION_GENOMES,
+    Champion,
+    Genome,
+)
+from darwin.genome.crossover import uniform_crossover
+from darwin.genome.mutate import mutate
 
 
 __all__ = [
@@ -38,7 +45,23 @@ async def birth_offspring(
     `db['genomes'].insert_many` for the bulk write.
     """
 
-    raise NotImplementedError("B4: implement birth_offspring (calls crossover+mutate, bulk insert)")
+    if n <= 0:
+        return []
+    if len(parents) < 2:
+        raise ValueError("birth_offspring requires at least 2 parents")
+
+    rng = rng or random.Random()
+
+    children: list[Genome] = []
+    for _ in range(n):
+        p1, p2 = rng.sample(parents, 2)
+        child = uniform_crossover(p1, p2, generation=generation, rng=rng)
+        child = mutate(child, mutation_rate, rng=rng)
+        children.append(child)
+
+    docs = [c.model_dump(by_alias=True) for c in children]
+    await db[COLLECTION_GENOMES].insert_many(docs)
+    return children
 
 
 async def retire_genomes(
@@ -50,7 +73,13 @@ async def retire_genomes(
     Uses `update_many({_id: {$in: genome_ids}}, {$set: {status: "retired"}})`.
     """
 
-    raise NotImplementedError("B4: implement retire_genomes")
+    if not genome_ids:
+        return 0
+    result = await db[COLLECTION_GENOMES].update_many(
+        {"_id": {"$in": list(genome_ids)}},
+        {"$set": {"status": "retired"}},
+    )
+    return result.modified_count
 
 
 async def promote_to_champion(
@@ -66,4 +95,42 @@ async def promote_to_champion(
     update its peak_fitness if the new value is higher; otherwise no-op.
     """
 
-    raise NotImplementedError("B4: implement promote_to_champion (idempotent insert + status flip)")
+    champions = db[COLLECTION_CHAMPIONS]
+    existing = await champions.find_one({"genome_id": genome.id})
+
+    if existing is not None:
+        existing_peak = existing.get("composite_fitness", float("-inf"))
+        if existing_peak >= peak_fitness:
+            await db[COLLECTION_GENOMES].update_one(
+                {"_id": genome.id},
+                {"$set": {"status": "champion"}},
+            )
+            return Champion.model_validate(existing)
+
+        update_doc: dict = {"composite_fitness": peak_fitness}
+        if summary is not None:
+            update_doc["summary"] = summary
+        update_doc["promoted_at_generation"] = genome.generation
+        await champions.update_one(
+            {"_id": existing["_id"]},
+            {"$set": update_doc},
+        )
+        await db[COLLECTION_GENOMES].update_one(
+            {"_id": genome.id},
+            {"$set": {"status": "champion"}},
+        )
+        refreshed = await champions.find_one({"_id": existing["_id"]})
+        return Champion.model_validate(refreshed)
+
+    champion = Champion(
+        genome_id=genome.id,
+        promoted_at_generation=genome.generation,
+        composite_fitness=peak_fitness,
+        summary=summary,
+    )
+    await champions.insert_one(champion.model_dump(by_alias=True))
+    await db[COLLECTION_GENOMES].update_one(
+        {"_id": genome.id},
+        {"$set": {"status": "champion"}},
+    )
+    return champion

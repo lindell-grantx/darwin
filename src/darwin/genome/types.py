@@ -26,6 +26,42 @@ __all__ = [
 ]
 
 
+# Layers walked by both gene_diff and gene_distance. Keeping this tuple in one
+# place keeps the two utilities in lock-step.
+_GENE_LAYERS: tuple[str, ...] = (
+    "retrieval_genes",
+    "coordination_genes",
+    "generation_genes",
+)
+
+
+# Numeric field ranges used for distance normalization. Values mirror the
+# sampling spec in factory.random_genome so that "distance 1.0" means
+# "endpoints of the realised gene space".
+_NUMERIC_RANGES: dict[str, tuple[float, float]] = {
+    "retrieval_genes.chunk_overlap": (0.0, 0.5),
+    "retrieval_genes.confidence_threshold": (0.0, 1.0),
+    "retrieval_genes.top_k": (3.0, 20.0),
+    "coordination_genes.consult_threshold": (0.0, 1.0),
+    "coordination_genes.timeout_ms": (500.0, 5000.0),
+    "coordination_genes.debate_rounds": (1.0, 3.0),
+    "generation_genes.temperature": (0.0, 1.0),
+    "generation_genes.max_tokens": (128.0, 2048.0),
+}
+
+
+# chunk_size is an ordered categorical: {128, 256, 512, 1024}. Treat it as
+# numeric on the index axis so neighbouring sizes are "closer" than extremes.
+_CHUNK_SIZES: tuple[int, ...] = (128, 256, 512, 1024)
+
+
+def _iter_gene_fields(genome: Genome):
+    for layer in _GENE_LAYERS:
+        layer_obj = getattr(genome, layer)
+        for field_name in layer_obj.__class__.model_fields:
+            yield layer, field_name, getattr(layer_obj, field_name)
+
+
 def gene_diff(a: Genome, b: Genome) -> dict[str, tuple[Any, Any]]:
     """Field-level diff between two genomes' gene layers.
 
@@ -34,7 +70,47 @@ def gene_diff(a: Genome, b: Genome) -> dict[str, tuple[Any, Any]]:
     panel and for human-readable "what mutated" displays.
     """
 
-    raise NotImplementedError("B1: implement gene_diff over the three gene layers")
+    diff: dict[str, tuple[Any, Any]] = {}
+    for layer in _GENE_LAYERS:
+        layer_a = getattr(a, layer)
+        layer_b = getattr(b, layer)
+        for field_name in layer_a.__class__.model_fields:
+            val_a = getattr(layer_a, field_name)
+            val_b = getattr(layer_b, field_name)
+            if isinstance(val_a, list) and isinstance(val_b, list):
+                # Order-insensitive compare for source_routing-style lists.
+                if sorted(val_a) != sorted(val_b):
+                    diff[f"{layer}.{field_name}"] = (val_a, val_b)
+            else:
+                if val_a != val_b:
+                    diff[f"{layer}.{field_name}"] = (val_a, val_b)
+    return diff
+
+
+def _field_distance(path: str, val_a: Any, val_b: Any) -> float:
+    if path == "retrieval_genes.chunk_size":
+        idx_a = _CHUNK_SIZES.index(val_a)
+        idx_b = _CHUNK_SIZES.index(val_b)
+        return abs(idx_a - idx_b) / (len(_CHUNK_SIZES) - 1)
+
+    if path == "retrieval_genes.source_routing":
+        set_a = set(val_a)
+        set_b = set(val_b)
+        union = set_a | set_b
+        if not union:
+            return 0.0
+        return 1.0 - (len(set_a & set_b) / len(union))
+
+    if path in _NUMERIC_RANGES:
+        lo, hi = _NUMERIC_RANGES[path]
+        span = hi - lo
+        if span <= 0:
+            return 0.0
+        delta = abs(float(val_a) - float(val_b)) / span
+        return min(1.0, max(0.0, delta))
+
+    # Categorical / enum / anything else: 1 if different, 0 if equal.
+    return 0.0 if val_a == val_b else 1.0
 
 
 def gene_distance(a: Genome, b: Genome) -> float:
@@ -45,4 +121,19 @@ def gene_distance(a: Genome, b: Genome) -> float:
     fields. The population diversity index is mean pairwise distance.
     """
 
-    raise NotImplementedError("B1: implement gene_distance")
+    total = 0.0
+    count = 0
+    for layer in _GENE_LAYERS:
+        layer_a = getattr(a, layer)
+        layer_b = getattr(b, layer)
+        for field_name in layer_a.__class__.model_fields:
+            path = f"{layer}.{field_name}"
+            val_a = getattr(layer_a, field_name)
+            val_b = getattr(layer_b, field_name)
+            total += _field_distance(path, val_a, val_b)
+            count += 1
+    if count == 0:
+        return 0.0
+    result = total / count
+    # Clamp for paranoia — every per-field contribution is already in [0, 1].
+    return min(1.0, max(0.0, result))

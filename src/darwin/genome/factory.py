@@ -3,12 +3,42 @@
 from __future__ import annotations
 
 import random
-from typing import Optional
+from typing import Optional, get_args
 
-from darwin.db.schemas import Genome
+from darwin.db.schemas import (
+    EMBEDDING_MODELS,
+    CoordinationGenes,
+    CoordinationProtocol,
+    GenerationGenes,
+    GeneratorModel,
+    Genome,
+    QueryTransform,
+    RerankStrategy,
+    RetrievalGenes,
+    SourceTag,
+)
 
 
 __all__ = ["random_genome", "random_population"]
+
+
+_QUERY_TRANSFORMS: tuple[str, ...] = get_args(QueryTransform)
+_RERANK_STRATEGIES: tuple[str, ...] = get_args(RerankStrategy)
+_SOURCE_TAGS: tuple[str, ...] = get_args(SourceTag)
+_PROTOCOLS: tuple[str, ...] = get_args(CoordinationProtocol)
+_GENERATOR_MODELS: tuple[str, ...] = get_args(GeneratorModel)
+_SYSTEM_STYLES: tuple[str, ...] = ("concise", "detailed", "stepwise")
+_CHUNK_SIZES: tuple[int, ...] = (128, 256, 512, 1024)
+
+
+def _sample_source_routing(rng: random.Random) -> list[str]:
+    # Non-empty subset of _SOURCE_TAGS, uniform over the 2^n - 1 non-empty
+    # subsets. We do that by including each tag iid p=0.5 and re-rolling
+    # if we end up with the empty set.
+    while True:
+        subset = [tag for tag in _SOURCE_TAGS if rng.random() < 0.5]
+        if subset:
+            return subset
 
 
 def random_genome(
@@ -41,7 +71,43 @@ def random_genome(
     factory is used as fallback after a failed crossover.
     """
 
-    raise NotImplementedError("B1: implement random_genome")
+    if rng is None:
+        rng = random.Random()
+    if parent_ids is None:
+        parent_ids = []
+
+    retrieval = RetrievalGenes(
+        embedding_model=rng.choice(EMBEDDING_MODELS),
+        chunk_size=rng.choice(_CHUNK_SIZES),
+        chunk_overlap=rng.uniform(0.0, 0.5),
+        query_transform=rng.choice(_QUERY_TRANSFORMS),
+        rerank=rng.choice(_RERANK_STRATEGIES),
+        confidence_threshold=rng.uniform(0.0, 1.0),
+        top_k=rng.randint(3, 20),
+        source_routing=_sample_source_routing(rng),
+    )
+
+    coordination = CoordinationGenes(
+        protocol=rng.choice(_PROTOCOLS),
+        consult_threshold=rng.uniform(0.0, 1.0),
+        timeout_ms=rng.randint(500, 5000),
+        debate_rounds=rng.randint(1, 3),
+    )
+
+    generation_genes = GenerationGenes(
+        model=rng.choice(_GENERATOR_MODELS),
+        temperature=rng.uniform(0.0, 1.0),
+        max_tokens=rng.randint(128, 2048),
+        system_style=rng.choice(_SYSTEM_STYLES),
+    )
+
+    return Genome(
+        generation=generation,
+        parent_ids=list(parent_ids),
+        retrieval_genes=retrieval,
+        coordination_genes=coordination,
+        generation_genes=generation_genes,
+    )
 
 
 def random_population(
@@ -52,4 +118,6 @@ def random_population(
 ) -> list[Genome]:
     """Sample `n` independent random genomes for genesis."""
 
-    raise NotImplementedError("B1: implement random_population (just a loop)")
+    if rng is None:
+        rng = random.Random()
+    return [random_genome(generation=generation, rng=rng) for _ in range(n)]
