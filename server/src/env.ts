@@ -33,6 +33,8 @@ export const env = {
   ANTHROPIC_MODEL_JUDGE: process.env.ANTHROPIC_MODEL_JUDGE ?? 'claude-haiku-4-5-20251001',
   ANTHROPIC_MODEL_GENERATOR: process.env.ANTHROPIC_MODEL_GENERATOR ?? 'claude-sonnet-4-6',
 
+  PYTHON_SERVICE_URL: process.env.PYTHON_SERVICE_URL ?? 'http://34.68.149.21:8080',
+
   LOG_LEVEL: process.env.LOG_LEVEL ?? 'info',
 };
 

@@ -1,44 +1,55 @@
 import { Hono } from 'hono';
 import type { QueryRequest, QueryResponse } from '../../../src/contracts.ts';
-import { fitnessEvaluations, genomes } from '../db/client.ts';
-import { idToString, toGenomeSummary } from '../db/mappers.ts';
+import { env } from '../env.ts';
 
 export const query = new Hono();
 
-// POST /query — currently returns a snapshot grounded in real DB state:
-// the best-fitness genome alive, plus a recent fitness evaluation for it.
-// TODO(stream-c): replace with real tournament-select + agent-runner + judge.
+// POST /query — proxies to external Python evaluation service
 query.post('/', async (c) => {
   const body = await c.req.json<QueryRequest>();
 
-  const winner = await genomes().findOne(
-    { status: { $in: ['alive', 'champion'] } },
-    { sort: { 'fitness.composite': -1 } },
-  );
-  if (!winner) return c.json({ error: 'no_population' }, 503);
+  if (!body.text?.trim()) {
+    return c.json({ error: 'empty_query' }, 400);
+  }
 
-  const recentEval = await fitnessEvaluations().findOne(
-    { genome_id: idToString(winner._id) },
-    { sort: { generation: -1 } },
-  );
+  try {
+    // Call external Python evaluation service
+    const response = await fetch(`${env.PYTHON_SERVICE_URL}/evaluate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: body.text,
+        genome_id: null, // Let Python pick best genome
+        persist: true, // Save evaluation to fitness_evaluations
+      }),
+    });
 
-  const response: QueryResponse = {
-    run_id: `run_${Date.now()}`,
-    answer: recentEval?.generated_answer ?? `[no evaluation yet] received: ${body.text ?? ''}`,
-    winning_genome: toGenomeSummary(winner),
-    fitness: recentEval?.components ?? {
-      relevance: 0,
-      accuracy: 0,
-      coverage: 0,
-      latency_ms: 0,
-      cost_usd: 0,
-    },
-    composite_fitness: recentEval?.composite_fitness ?? winner.fitness.composite,
-    retrieval_trace: (recentEval?.retrieval_trace ?? []).map((t) => ({
-      chunk_id: idToString(t.chunk_id),
-      score: t.score,
-      position: t.position,
-    })),
-  };
-  return c.json(response);
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown error');
+      throw new Error(`Python service returned ${response.status}: ${errorText}`);
+    }
+
+    const result = (await response.json()) as QueryResponse;
+
+    // Map external response to QueryResponse contract (response already matches)
+    const queryResponse: QueryResponse = {
+      run_id: result.run_id,
+      answer: result.answer,
+      winning_genome: result.winning_genome,
+      fitness: result.fitness,
+      composite_fitness: result.composite_fitness,
+      retrieval_trace: result.retrieval_trace,
+    };
+
+    return c.json(queryResponse);
+  } catch (error) {
+    console.error('[POST /query] evaluation failed:', error);
+    return c.json(
+      {
+        error: 'evaluation_failed',
+        message: error instanceof Error ? error.message : String(error),
+      },
+      502,
+    );
+  }
 });
