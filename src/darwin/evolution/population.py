@@ -1,0 +1,136 @@
+"""Population-level operations: birthing offspring, retiring genomes, promoting champions."""
+
+from __future__ import annotations
+
+import random
+from typing import Optional
+
+from motor.motor_asyncio import AsyncIOMotorDatabase
+
+from darwin.db.schemas import (
+    COLLECTION_CHAMPIONS,
+    COLLECTION_GENOMES,
+    Champion,
+    Genome,
+)
+from darwin.genome.crossover import uniform_crossover
+from darwin.genome.mutate import mutate
+
+
+__all__ = [
+    "birth_offspring",
+    "promote_to_champion",
+    "retire_genomes",
+]
+
+
+async def birth_offspring(
+    db: AsyncIOMotorDatabase,
+    parents: list[Genome],
+    n: int,
+    generation: int,
+    *,
+    mutation_rate: float,
+    rng: Optional[random.Random] = None,
+) -> list[Genome]:
+    """Produce `n` offspring by repeated crossover+mutate from the parent pool.
+
+    For each child:
+    1. Pick two distinct parents at random (with replacement across iterations).
+    2. `child = uniform_crossover(p1, p2, generation=generation)` (genome.crossover).
+    3. `child = mutate(child, mutation_rate)` (genome.mutate).
+    4. Insert into `genomes` collection.
+
+    Returns the inserted Genome list (with assigned ids). Uses
+    `db['genomes'].insert_many` for the bulk write.
+    """
+
+    if n <= 0:
+        return []
+    if len(parents) < 2:
+        raise ValueError("birth_offspring requires at least 2 parents")
+
+    rng = rng or random.Random()
+
+    children: list[Genome] = []
+    for _ in range(n):
+        p1, p2 = rng.sample(parents, 2)
+        child = uniform_crossover(p1, p2, generation=generation, rng=rng)
+        child = mutate(child, mutation_rate, rng=rng)
+        children.append(child)
+
+    docs = [c.model_dump(by_alias=True) for c in children]
+    await db[COLLECTION_GENOMES].insert_many(docs)
+    return children
+
+
+async def retire_genomes(
+    db: AsyncIOMotorDatabase,
+    genome_ids: list[str],
+) -> int:
+    """Mark the listed genomes as `status="retired"`. Returns count modified.
+
+    Uses `update_many({_id: {$in: genome_ids}}, {$set: {status: "retired"}})`.
+    """
+
+    if not genome_ids:
+        return 0
+    result = await db[COLLECTION_GENOMES].update_many(
+        {"_id": {"$in": list(genome_ids)}},
+        {"$set": {"status": "retired"}},
+    )
+    return result.modified_count
+
+
+async def promote_to_champion(
+    db: AsyncIOMotorDatabase,
+    genome: Genome,
+    peak_fitness: float,
+    *,
+    summary: Optional[str] = None,
+) -> Champion:
+    """Insert a Champion doc and flip the genome's status to "champion".
+
+    Idempotent on (genome_id): if a champion already exists for this genome,
+    update its peak_fitness if the new value is higher; otherwise no-op.
+    """
+
+    champions = db[COLLECTION_CHAMPIONS]
+    existing = await champions.find_one({"genome_id": genome.id})
+
+    if existing is not None:
+        existing_peak = existing.get("composite_fitness", float("-inf"))
+        if existing_peak >= peak_fitness:
+            await db[COLLECTION_GENOMES].update_one(
+                {"_id": genome.id},
+                {"$set": {"status": "champion"}},
+            )
+            return Champion.model_validate(existing)
+
+        update_doc: dict = {"composite_fitness": peak_fitness}
+        if summary is not None:
+            update_doc["summary"] = summary
+        update_doc["promoted_at_generation"] = genome.generation
+        await champions.update_one(
+            {"_id": existing["_id"]},
+            {"$set": update_doc},
+        )
+        await db[COLLECTION_GENOMES].update_one(
+            {"_id": genome.id},
+            {"$set": {"status": "champion"}},
+        )
+        refreshed = await champions.find_one({"_id": existing["_id"]})
+        return Champion.model_validate(refreshed)
+
+    champion = Champion(
+        genome_id=genome.id,
+        promoted_at_generation=genome.generation,
+        composite_fitness=peak_fitness,
+        summary=summary,
+    )
+    await champions.insert_one(champion.model_dump(by_alias=True))
+    await db[COLLECTION_GENOMES].update_one(
+        {"_id": genome.id},
+        {"$set": {"status": "champion"}},
+    )
+    return champion
