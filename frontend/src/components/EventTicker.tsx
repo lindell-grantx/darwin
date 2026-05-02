@@ -28,16 +28,22 @@ const LABEL: Record<EvolutionEvent['event_type'], string> = {
 
 function summary(e: EvolutionEvent): string {
   switch (e.event_type) {
-    case 'generation.evolved':
-      return `gen ${e.generation} · best ${(e.data.best_fitness as number).toFixed(3)}`;
+    case 'generation.evolved': {
+      const fitness = e.data.best_fitness as number | undefined;
+      return `gen ${e.generation} · best ${fitness != null ? fitness.toFixed(3) : '—'}`;
+    }
     case 'genome.born':
       return `new specimen · gen ${e.generation}`;
     case 'genome.retired':
       return `expired · gen ${e.generation}`;
-    case 'champion.promoted':
-      return `${e.data.champion_id as string} · fit ${(e.data.composite_fitness as number).toFixed(3)}`;
-    case 'query.completed':
-      return `${e.data.genome_id as string} → fit ${(e.data.composite_fitness as number).toFixed(3)}`;
+    case 'champion.promoted': {
+      const fitness = e.data.composite_fitness as number | undefined;
+      return `${e.data.champion_id as string} · fit ${fitness != null ? fitness.toFixed(3) : '—'}`;
+    }
+    case 'query.completed': {
+      const fitness = e.data.composite_fitness as number | undefined;
+      return `${e.data.genome_id as string} → fit ${fitness != null ? fitness.toFixed(3) : '—'}`;
+    }
   }
 }
 

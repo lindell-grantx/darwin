@@ -13,8 +13,8 @@ interface Props {
 }
 
 export function GenomeCard({ genome, compact = false, onClick }: Props) {
-  const { chunk_size, embedding_model, top_k } = genome.retrieval_genes;
-  const tone = fitnessTone(genome.fitness.composite);
+  const { chunk_size, embedding_model, top_k } = genome.retrieval_genes ?? {};
+  const tone = fitnessTone(genome.fitness?.composite ?? 0);
   const isChamp = genome.status === 'champion';
 
   const Wrapper = onClick ? 'button' : 'div';
@@ -46,7 +46,7 @@ export function GenomeCard({ genome, compact = false, onClick }: Props) {
           <span className="font-mono text-[13px] text-bone">{genome.id}</span>
         </div>
         <span className={`numeric font-mono text-base font-semibold ${tone.text}`}>
-          {genome.fitness.composite.toFixed(2)}
+          {genome.fitness?.composite != null ? genome.fitness.composite.toFixed(2) : '—'}
         </span>
       </div>
 
@@ -56,16 +56,16 @@ export function GenomeCard({ genome, compact = false, onClick }: Props) {
             <div
               className="h-full transition-[width] duration-700"
               style={{
-                width: `${Math.max(4, genome.fitness.composite * 100)}%`,
+                width: `${Math.max(4, (genome.fitness?.composite ?? 0) * 100)}%`,
                 background: tone.bar,
                 boxShadow: `0 0 6px ${tone.bar}`,
               }}
             />
           </div>
           <div className="mt-2 grid grid-cols-3 gap-2 font-mono text-[10px]">
-            <Field label="gen" value={String(genome.generation)} />
-            <Field label="model" value={embedding_model} />
-            <Field label="chunk·k" value={`${chunk_size}·${top_k}`} />
+            <Field label="gen" value={String(genome.generation ?? '—')} />
+            <Field label="model" value={embedding_model ?? '—'} />
+            <Field label="chunk·k" value={chunk_size != null && top_k != null ? `${chunk_size}·${top_k}` : '—'} />
           </div>
         </>
       )}

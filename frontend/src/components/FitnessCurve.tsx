@@ -72,17 +72,17 @@ export function FitnessCurve({ events }: Props) {
       <div className="flex items-baseline gap-4 border-b border-rule pb-2">
         <Readout
           label="Best"
-          value={latest ? latest.best.toFixed(3) : '—'}
+          value={latest?.best != null ? latest.best.toFixed(3) : '—'}
           color="moss"
         />
         <Readout
           label="Mean"
-          value={latest ? latest.mean.toFixed(3) : '—'}
+          value={latest?.mean != null ? latest.mean.toFixed(3) : '—'}
           color="brass"
         />
         <Readout
           label="Diversity"
-          value={latest ? latest.diversity.toFixed(3) : '—'}
+          value={latest?.diversity != null ? latest.diversity.toFixed(3) : '—'}
           color="bone-dim"
         />
         <div className="ml-auto flex items-baseline gap-1.5">

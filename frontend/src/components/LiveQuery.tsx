@@ -171,8 +171,8 @@ function ResultBody({
             >
               <span className="text-right text-bone-fade">{String(i + 1).padStart(2, '0')}</span>
               <span className="truncate text-bone">{r.chunk_id}</span>
-              <span className="numeric text-right text-moss">{r.score.toFixed(3)}</span>
-              <span className="numeric text-right text-bone-dim">#{r.position}</span>
+              <span className="numeric text-right text-moss">{r.score != null ? r.score.toFixed(3) : '—'}</span>
+              <span className="numeric text-right text-bone-dim">#{r.position ?? '—'}</span>
             </div>
           ))}
         </div>
@@ -218,17 +218,17 @@ function FitnessLedger({
   composite: number;
 }) {
   const cells: Array<{ label: string; value: string; tone: string }> = [
-    { label: 'relevance', value: fitness.relevance.toFixed(3), tone: 'text-moss' },
-    { label: 'accuracy', value: fitness.accuracy.toFixed(3), tone: 'text-moss' },
-    { label: 'latency', value: `${Math.round(fitness.latency_ms)} ms`, tone: 'text-ember' },
-    { label: 'cost', value: `$${fitness.cost_usd.toFixed(4)}`, tone: 'text-bone-dim' },
+    { label: 'relevance', value: fitness.relevance != null ? fitness.relevance.toFixed(3) : '—', tone: 'text-moss' },
+    { label: 'accuracy', value: fitness.accuracy != null ? fitness.accuracy.toFixed(3) : '—', tone: 'text-moss' },
+    { label: 'latency', value: fitness.latency_ms != null ? `${Math.round(fitness.latency_ms)} ms` : '—', tone: 'text-ember' },
+    { label: 'cost', value: fitness.cost_usd != null ? `$${fitness.cost_usd.toFixed(4)}` : '—', tone: 'text-bone-dim' },
   ];
   return (
     <div className="border border-rule">
       <div className="flex items-baseline justify-between gap-2 border-b border-rule bg-ink-2/40 px-2.5 py-1.5">
         <span className="label-cap">Composite</span>
         <span className="numeric font-mono text-base font-semibold text-brass-bright">
-          {composite.toFixed(3)}
+          {composite != null ? composite.toFixed(3) : '—'}
         </span>
       </div>
       <div className="grid grid-cols-4">

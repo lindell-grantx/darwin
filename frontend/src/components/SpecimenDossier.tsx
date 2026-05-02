@@ -98,60 +98,60 @@ function DossierPanel({ genome, onClose }: { genome: GenomeSummary; onClose: () 
       {/* Body */}
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
         <DossierSection title="Retrieval genes" numeral="i">
-          <Row k="embedding_model" v={genome.retrieval_genes.embedding_model} mono />
+          <Row k="embedding_model" v={genome.retrieval_genes?.embedding_model ?? '—'} mono />
           <Row
             k="chunk_size"
-            v={`${genome.retrieval_genes.chunk_size} tok`}
+            v={genome.retrieval_genes?.chunk_size != null ? `${genome.retrieval_genes.chunk_size} tok` : '—'}
             num
           />
           <Row
             k="chunk_overlap"
-            v={(genome.retrieval_genes.chunk_overlap * 100).toFixed(0) + ' %'}
+            v={genome.retrieval_genes?.chunk_overlap != null ? `${(genome.retrieval_genes.chunk_overlap * 100).toFixed(0)} %` : '—'}
             num
           />
-          <Row k="query_transform" v={genome.retrieval_genes.query_transform} pill />
-          <Row k="rerank" v={genome.retrieval_genes.rerank} pill />
+          <Row k="query_transform" v={genome.retrieval_genes?.query_transform ?? '—'} pill />
+          <Row k="rerank" v={genome.retrieval_genes?.rerank ?? '—'} pill />
           <Row
             k="confidence_thr"
-            v={genome.retrieval_genes.confidence_threshold.toFixed(2)}
+            v={genome.retrieval_genes?.confidence_threshold != null ? genome.retrieval_genes.confidence_threshold.toFixed(2) : '—'}
             num
           />
-          <Row k="top_k" v={String(genome.retrieval_genes.top_k)} num />
+          <Row k="top_k" v={genome.retrieval_genes?.top_k != null ? String(genome.retrieval_genes.top_k) : '—'} num />
           <Row
             k="source_routing"
-            v={genome.retrieval_genes.source_routing.join(' · ') || '—'}
+            v={genome.retrieval_genes?.source_routing?.length ? genome.retrieval_genes.source_routing.join(' · ') : '—'}
             mono
           />
         </DossierSection>
 
         <DossierSection title="Coordination genes" numeral="ii">
-          <Row k="protocol" v={genome.coordination_genes.protocol} pill />
+          <Row k="protocol" v={genome.coordination_genes?.protocol ?? '—'} pill />
           <Row
             k="consult_thr"
-            v={genome.coordination_genes.consult_threshold.toFixed(2)}
+            v={genome.coordination_genes?.consult_threshold != null ? genome.coordination_genes.consult_threshold.toFixed(2) : '—'}
             num
           />
           <Row
             k="timeout_ms"
-            v={`${genome.coordination_genes.timeout_ms.toLocaleString()} ms`}
+            v={genome.coordination_genes?.timeout_ms != null ? `${genome.coordination_genes.timeout_ms.toLocaleString()} ms` : '—'}
             num
           />
           <Row
             k="debate_rounds"
-            v={String(genome.coordination_genes.debate_rounds)}
+            v={genome.coordination_genes?.debate_rounds != null ? String(genome.coordination_genes.debate_rounds) : '—'}
             num
           />
         </DossierSection>
 
         <DossierSection title="Generation genes" numeral="iii">
-          <Row k="model" v={genome.generation_genes.model} mono />
-          <Row k="temperature" v={genome.generation_genes.temperature.toFixed(2)} num />
+          <Row k="model" v={genome.generation_genes?.model ?? '—'} mono />
+          <Row k="temperature" v={genome.generation_genes?.temperature != null ? genome.generation_genes.temperature.toFixed(2) : '—'} num />
           <Row
             k="max_tokens"
-            v={genome.generation_genes.max_tokens.toLocaleString()}
+            v={genome.generation_genes?.max_tokens != null ? genome.generation_genes.max_tokens.toLocaleString() : '—'}
             num
           />
-          <Row k="system_style" v={genome.generation_genes.system_style} pill />
+          <Row k="system_style" v={genome.generation_genes?.system_style ?? '—'} pill />
         </DossierSection>
       </div>
 
