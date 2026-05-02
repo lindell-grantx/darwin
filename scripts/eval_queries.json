@@ -1,0 +1,341 @@
+[
+  {
+    "text": "How do I create an Atlas Vector Search index for embeddings stored under embeddings.voyage_4?",
+    "ground_truth": "Create an Atlas Search vector index whose definition has a vector field at the nested path embeddings.voyage_4. Set numDimensions to match the embedding model and choose the similarity metric, such as cosine.",
+    "expected_facts": [
+      "Atlas Search vector index",
+      "path embeddings.voyage_4",
+      "type vector",
+      "numDimensions matches model",
+      "similarity metric"
+    ],
+    "difficulty": "easy",
+    "domain_tags": ["mongodb", "vector-search"]
+  },
+  {
+    "text": "Create a MongoDB $vectorSearch query that returns the top 10 matching chunks for a user question.",
+    "ground_truth": "Use an aggregation pipeline with a $vectorSearch stage that names the vector index, supplies the queryVector, points path at the embedding field, and sets limit to 10. numCandidates should be larger than limit to give the search room to find good candidates.",
+    "expected_facts": [
+      "$vectorSearch stage",
+      "index name",
+      "queryVector",
+      "path to embedding field",
+      "limit 10",
+      "numCandidates greater than limit"
+    ],
+    "difficulty": "easy",
+    "domain_tags": ["mongodb", "vector-search"]
+  },
+  {
+    "text": "Why does Atlas Vector Search need the embedding dimensions in the index definition?",
+    "ground_truth": "The vector index must know the fixed length of vectors stored in the indexed field so it can validate and compare them correctly. The numDimensions value must match the embedding model that produced the vectors.",
+    "expected_facts": [
+      "fixed vector length",
+      "numDimensions",
+      "matches embedding model",
+      "validates vectors",
+      "compares vectors correctly"
+    ],
+    "difficulty": "easy",
+    "domain_tags": ["mongodb", "vector-search"]
+  },
+  {
+    "text": "How would you combine vector search with a metadata filter for only MongoDB documentation chunks?",
+    "ground_truth": "Add a filter inside the $vectorSearch stage using indexed metadata fields such as metadata.source or metadata.tags. The filter restricts candidate documents before returning the nearest vector matches.",
+    "expected_facts": [
+      "$vectorSearch filter",
+      "metadata.source",
+      "metadata.tags",
+      "restricts candidates",
+      "nearest vector matches"
+    ],
+    "difficulty": "medium",
+    "domain_tags": ["mongodb", "vector-search"]
+  },
+  {
+    "text": "How can MongoDB change streams trigger Darwin's evolution loop after fitness scores are written?",
+    "ground_truth": "Watch the fitness_evaluations collection with a change stream and react to insert events. When enough evaluations arrive for a generation, the conductor can compute selection, create children, and update generation summaries without polling.",
+    "expected_facts": [
+      "watch fitness_evaluations",
+      "change stream",
+      "insert events",
+      "enough evaluations",
+      "compute selection",
+      "without polling"
+    ],
+    "difficulty": "medium",
+    "domain_tags": ["mongodb", "vector-search"]
+  },
+  {
+    "text": "What's the point of storing generation fitness history in a MongoDB time-series collection?",
+    "ground_truth": "Generation summaries are time-ordered measurements, so a time-series collection is a natural fit. It makes trend queries and demo charts for best fitness, mean fitness, and diversity over time straightforward.",
+    "expected_facts": [
+      "time-ordered measurements",
+      "time-series collection",
+      "best fitness",
+      "mean fitness",
+      "diversity over time",
+      "trend queries"
+    ],
+    "difficulty": "easy",
+    "domain_tags": ["mongodb", "vector-search"]
+  },
+  {
+    "text": "How should Darwin index the queries collection so agents can sample by domain and difficulty?",
+    "ground_truth": "Create secondary indexes on fields used for filtering, especially domain_tags and difficulty. A compound index can help if the system often queries by both fields together.",
+    "expected_facts": [
+      "secondary indexes",
+      "domain_tags",
+      "difficulty",
+      "compound index",
+      "filtering"
+    ],
+    "difficulty": "easy",
+    "domain_tags": ["mongodb", "vector-search"]
+  },
+  {
+    "text": "Why use MongoDB documents for Darwin genomes instead of a fixed SQL table?",
+    "ground_truth": "Genome documents contain nested retrieval, coordination, durability, fitness, and mutation fields that may evolve during the hackathon. MongoDB's document model stores that flexible nested structure without forcing every gene into a rigid table layout.",
+    "expected_facts": [
+      "nested genome fields",
+      "retrieval genes",
+      "coordination genes",
+      "durability genes",
+      "flexible document model",
+      "rigid table layout"
+    ],
+    "difficulty": "medium",
+    "domain_tags": ["mongodb", "vector-search"]
+  },
+  {
+    "text": "How do transactions help when Darwin updates a population after selection?",
+    "ground_truth": "A transaction can keep related writes consistent, such as retiring weak genomes, inserting child genomes, and writing the generation summary. If one write fails, the population is not left half-updated.",
+    "expected_facts": [
+      "transaction",
+      "related writes",
+      "retire weak genomes",
+      "insert child genomes",
+      "generation summary",
+      "consistent population"
+    ],
+    "difficulty": "medium",
+    "domain_tags": ["mongodb", "vector-search"]
+  },
+  {
+    "text": "What can go wrong if the vector index path does not match the field used by the retriever?",
+    "ground_truth": "The retriever may query a path that is not indexed or that contains vectors with the wrong dimensions. That can produce empty results, query errors, or poor retrieval even when the chunks have valid embeddings elsewhere.",
+    "expected_facts": [
+      "index path mismatch",
+      "retriever path",
+      "wrong dimensions",
+      "empty results",
+      "query errors",
+      "poor retrieval"
+    ],
+    "difficulty": "hard",
+    "domain_tags": ["mongodb", "vector-search"]
+  },
+  {
+    "text": "Which Voyage embedding model should I use if I care more about latency than maximum retrieval quality?",
+    "ground_truth": "Use a smaller Voyage embedding model such as voyage-4-lite or voyage-4-nano when latency and cost matter more than peak quality. Larger models generally trade more compute for better representation quality.",
+    "expected_facts": [
+      "voyage-4-lite",
+      "voyage-4-nano",
+      "lower latency",
+      "lower cost",
+      "quality tradeoff"
+    ],
+    "difficulty": "easy",
+    "domain_tags": ["voyage", "embeddings", "rag"]
+  },
+  {
+    "text": "Why would Darwin precompute embeddings for every chunk instead of embedding during each genome evaluation?",
+    "ground_truth": "Precomputing embeddings removes repeated embedding latency and cost from each evaluation. It lets many genomes compare retrieval strategies over the same chunk vectors without recomputing document embeddings.",
+    "expected_facts": [
+      "precompute embeddings",
+      "avoid repeated latency",
+      "avoid repeated cost",
+      "same chunk vectors",
+      "compare retrieval strategies"
+    ],
+    "difficulty": "easy",
+    "domain_tags": ["voyage", "embeddings", "rag"]
+  },
+  {
+    "text": "How does a reranker like Voyage rerank-2 improve a RAG pipeline after vector search?",
+    "ground_truth": "Vector search retrieves an initial candidate set, and the reranker rescores those candidates against the query with a stronger relevance model. The final context can use the reranked order rather than the raw nearest-neighbor order.",
+    "expected_facts": [
+      "initial candidate set",
+      "reranker rescores",
+      "query relevance",
+      "stronger relevance model",
+      "reranked order"
+    ],
+    "difficulty": "medium",
+    "domain_tags": ["voyage", "embeddings", "rag"]
+  },
+  {
+    "text": "When would multi-query retrieval help more than a single embedded user question?",
+    "ground_truth": "Multi-query retrieval helps when the original question is ambiguous or could be phrased several ways. Embedding multiple rewritten queries can retrieve complementary evidence that a single query might miss.",
+    "expected_facts": [
+      "ambiguous question",
+      "multiple rewritten queries",
+      "complementary evidence",
+      "single query might miss",
+      "retrieve broader context"
+    ],
+    "difficulty": "medium",
+    "domain_tags": ["voyage", "embeddings", "rag"]
+  },
+  {
+    "text": "How does chunk size affect embedding-based retrieval quality?",
+    "ground_truth": "Smaller chunks can produce focused matches but may lose surrounding context. Larger chunks preserve context but can dilute the exact signal the query vector is trying to match.",
+    "expected_facts": [
+      "smaller chunks",
+      "focused matches",
+      "lose context",
+      "larger chunks",
+      "preserve context",
+      "dilute signal"
+    ],
+    "difficulty": "easy",
+    "domain_tags": ["voyage", "embeddings", "rag"]
+  },
+  {
+    "text": "Why should Darwin store embeddings from multiple Voyage model variants for the same chunk?",
+    "ground_truth": "Different genomes can choose different embedding models as part of their retrieval genes. Storing several variants lets the system compare quality, latency, and cost tradeoffs without re-embedding the corpus during evaluation.",
+    "expected_facts": [
+      "different genomes",
+      "retrieval genes",
+      "multiple model variants",
+      "quality tradeoffs",
+      "latency tradeoffs",
+      "without re-embedding"
+    ],
+    "difficulty": "medium",
+    "domain_tags": ["voyage", "embeddings", "rag"]
+  },
+  {
+    "text": "What is HyDE retrieval and why might an evolved genome choose it?",
+    "ground_truth": "HyDE asks a model to draft a hypothetical answer or document, embeds that generated text, and uses it for retrieval. A genome might choose it when the generated answer is closer to relevant documents than the raw user query.",
+    "expected_facts": [
+      "hypothetical answer",
+      "embed generated text",
+      "retrieval query",
+      "closer to relevant documents",
+      "raw user query"
+    ],
+    "difficulty": "hard",
+    "domain_tags": ["voyage", "embeddings", "rag"]
+  },
+  {
+    "text": "How should Darwin account for embedding and reranking latency in a genome's fitness score?",
+    "ground_truth": "The judge can score answer quality separately from operational costs, then apply latency or cost penalties to the composite fitness. This prevents a slow high-quality genome from always beating a slightly weaker but much faster one.",
+    "expected_facts": [
+      "answer quality",
+      "latency penalty",
+      "cost penalty",
+      "composite fitness",
+      "slow high-quality genome",
+      "faster genome tradeoff"
+    ],
+    "difficulty": "hard",
+    "domain_tags": ["voyage", "embeddings", "rag"]
+  },
+  {
+    "text": "How would LangGraph help orchestrate Darwin's retrieval, judging, and evolution steps?",
+    "ground_truth": "LangGraph can model the workflow as stateful nodes and edges, such as retrieve, answer, judge, persist fitness, and evolve. This makes branching, retries, and long-running agent state easier to control.",
+    "expected_facts": [
+      "stateful nodes",
+      "edges",
+      "retrieve",
+      "judge",
+      "persist fitness",
+      "long-running state"
+    ],
+    "difficulty": "hard",
+    "domain_tags": ["langchain", "agents"]
+  },
+  {
+    "text": "What should an agent state object carry during one Darwin evaluation run?",
+    "ground_truth": "It should carry the query, genome configuration, retrieved chunks, generated answer, judge components, fitness score, and trace metadata. That state makes the run reproducible and debuggable.",
+    "expected_facts": [
+      "query",
+      "genome configuration",
+      "retrieved chunks",
+      "generated answer",
+      "judge components",
+      "trace metadata"
+    ],
+    "difficulty": "easy",
+    "domain_tags": ["langchain", "agents"]
+  },
+  {
+    "text": "When should a Darwin agent call a retrieval tool instead of answering from memory?",
+    "ground_truth": "The agent should retrieve when the query needs factual grounding, current corpus evidence, citations, or domain-specific details. Answering from memory is risky for technical documentation questions.",
+    "expected_facts": [
+      "factual grounding",
+      "corpus evidence",
+      "citations",
+      "domain-specific details",
+      "technical documentation"
+    ],
+    "difficulty": "easy",
+    "domain_tags": ["langchain", "agents"]
+  },
+  {
+    "text": "How can a blackboard pattern make multi-agent retrieval easier to observe?",
+    "ground_truth": "Agents can publish retrieved evidence, confidence, proposed answers, and votes into a shared state. The demo can then show who contributed what and how consensus formed.",
+    "expected_facts": [
+      "shared state",
+      "retrieved evidence",
+      "confidence",
+      "proposed answers",
+      "votes",
+      "consensus"
+    ],
+    "difficulty": "medium",
+    "domain_tags": ["langchain", "agents"]
+  },
+  {
+    "text": "How do retriever abstractions help Darwin swap retrieval strategies between genomes?",
+    "ground_truth": "A common retriever interface lets genomes vary implementation details like top_k, filters, query transforms, and reranking while the agent runner calls the same API. That keeps evolution focused on configuration instead of branching code paths everywhere.",
+    "expected_facts": [
+      "common retriever interface",
+      "top_k",
+      "filters",
+      "query transforms",
+      "reranking",
+      "same API"
+    ],
+    "difficulty": "medium",
+    "domain_tags": ["langchain", "agents"]
+  },
+  {
+    "text": "Why is memory dangerous in an evaluation benchmark if agents can see answers from previous runs?",
+    "ground_truth": "Shared or persistent memory can leak ground truth or previous judged answers into later evaluations. That makes fitness scores unfair because genomes are no longer being compared on the same clean retrieval task.",
+    "expected_facts": [
+      "persistent memory",
+      "leak ground truth",
+      "previous judged answers",
+      "unfair fitness scores",
+      "same clean retrieval task"
+    ],
+    "difficulty": "hard",
+    "domain_tags": ["langchain", "agents"]
+  },
+  {
+    "text": "How should Darwin capture an agent's tool-use trace for the demo?",
+    "ground_truth": "Record each retrieval call, parameters, returned chunk IDs, scores, reranking decisions, and final answer. The UI or terminal demo can replay this trace to explain why a genome won.",
+    "expected_facts": [
+      "retrieval call",
+      "parameters",
+      "chunk IDs",
+      "scores",
+      "reranking decisions",
+      "replay trace"
+    ],
+    "difficulty": "medium",
+    "domain_tags": ["langchain", "agents"]
+  }
+]
