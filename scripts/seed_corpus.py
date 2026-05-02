@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import html
 import logging
 import re
 import sys
@@ -95,9 +96,10 @@ _WS_RE = re.compile(r"[ \t]+")
 _BLANKLINE_RE = re.compile(r"\n\s*\n+")
 
 
-def html_to_text(html: str) -> str:
-    text = _SCRIPT_STYLE_RE.sub(" ", html)
+def html_to_text(raw_html: str) -> str:
+    text = _SCRIPT_STYLE_RE.sub(" ", raw_html)
     text = _TAG_RE.sub(" ", text)
+    text = html.unescape(text)
     text = text.replace(" ", " ")
     text = _WS_RE.sub(" ", text)
     text = _BLANKLINE_RE.sub("\n\n", text)
