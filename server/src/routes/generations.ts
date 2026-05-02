@@ -17,6 +17,9 @@ generations.get('/', async (c) => {
         best_fitness: d.best_fitness,
         mean_fitness: d.mean_fitness,
         diversity_index: d.diversity_index,
+        selection: d.selection,
+        crossover_rate: d.crossover_rate,
+        mutation_rate: d.mutation_rate,
       })),
     };
   }, mockGenerations);

@@ -8,9 +8,10 @@ import {
 } from '@xyflow/react';
 import { useEffect, useMemo, useState } from 'react';
 
-import type { GenomeSummary, LineageResponse, PopulationResponse } from '@contracts';
+import type { FitnessSummary, LineageResponse, PopulationResponse, RetrievalGenes } from '@contracts';
 
 import { getLineage, getPopulation } from '../lib/api';
+import { Spinner } from './Spinner';
 
 const NODE_W = 140;
 const NODE_H = 56;
@@ -28,21 +29,26 @@ function fitnessBorder(f: number): string {
   return '#f43f5e';
 }
 
+type GraphNode = {
+  id: string;
+  generation: number;
+  fitness: FitnessSummary;
+  retrieval_genes: RetrievalGenes;
+};
+
 interface BuiltGraph {
   nodes: Node[];
   edges: Edge[];
 }
 
 function buildGraph(population: PopulationResponse, lineages: LineageResponse[]): BuiltGraph {
-  const byId = new Map<string, GenomeSummary>();
+  const byId = new Map<string, GraphNode>();
   for (const g of population.genomes) byId.set(g.id, g);
   for (const l of lineages) {
-    byId.set(l.genome.id, l.genome);
-    for (const a of l.ancestors) byId.set(a.genome.id, a.genome);
+    for (const n of l.nodes) byId.set(n.id, n);
   }
 
-  // Layout: y = generation, x = index within generation.
-  const byGen = new Map<number, GenomeSummary[]>();
+  const byGen = new Map<number, GraphNode[]>();
   for (const g of byId.values()) {
     const list = byGen.get(g.generation) ?? [];
     list.push(g);
@@ -62,7 +68,7 @@ function buildGraph(population: PopulationResponse, lineages: LineageResponse[])
             <div className="leading-tight">
               <div className="font-mono text-[11px] text-zinc-200">{g.id}</div>
               <div className="font-mono text-[10px] text-zinc-400">
-                fit {g.fitness_composite.toFixed(2)} · k={String(g.retrieval_genes.k)}
+                fit {g.fitness.composite.toFixed(2)} · k={g.retrieval_genes.chunk_size}
               </div>
             </div>
           ),
@@ -70,8 +76,8 @@ function buildGraph(population: PopulationResponse, lineages: LineageResponse[])
         style: {
           width: NODE_W,
           height: NODE_H,
-          background: fitnessTint(g.fitness_composite),
-          border: `1px solid ${fitnessBorder(g.fitness_composite)}`,
+          background: fitnessTint(g.fitness.composite),
+          border: `1px solid ${fitnessBorder(g.fitness.composite)}`,
           borderRadius: 6,
           color: '#e4e4e7',
           padding: 6,
@@ -84,20 +90,20 @@ function buildGraph(population: PopulationResponse, lineages: LineageResponse[])
   const edgeSet = new Set<string>();
   const edges: Edge[] = [];
   for (const l of lineages) {
-    let childId = l.genome.id;
-    for (const a of l.ancestors) {
-      const key = `${a.genome.id}->${childId}`;
-      if (!edgeSet.has(key)) {
-        edgeSet.add(key);
-        edges.push({
-          id: key,
-          source: a.genome.id,
-          target: childId,
-          style: { stroke: '#52525b' },
-          animated: false,
-        });
+    for (const node of l.nodes) {
+      for (const parentId of node.parent_ids) {
+        const key = `${parentId}->${node.id}`;
+        if (!edgeSet.has(key)) {
+          edgeSet.add(key);
+          edges.push({
+            id: key,
+            source: parentId,
+            target: node.id,
+            style: { stroke: '#52525b' },
+            animated: false,
+          });
+        }
       }
-      childId = a.genome.id;
     }
   }
 
@@ -118,7 +124,7 @@ export function FamilyTree() {
         setPopulation(pop);
         // Fetch lineages for the top-3 fittest to draw edges.
         const top = [...pop.genomes]
-          .sort((a, b) => b.fitness_composite - a.fitness_composite)
+          .sort((a, b) => b.fitness.composite - a.fitness.composite)
           .slice(0, 3);
         const lins = await Promise.all(top.map((g) => getLineage(g.id)));
         if (mounted) setLineages(lins);
@@ -137,7 +143,13 @@ export function FamilyTree() {
   );
 
   if (error) return <div className="text-xs text-rose-400">{error}</div>;
-  if (!population) return <div className="text-xs text-zinc-500">Loading population…</div>;
+  if (!population) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Spinner label="Loading population…" />
+      </div>
+    );
+  }
 
   return (
     <ReactFlow

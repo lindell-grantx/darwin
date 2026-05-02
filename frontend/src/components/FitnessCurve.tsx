@@ -13,6 +13,7 @@ import {
 import type { EvolutionEvent, FitnessCurveResponse } from '@contracts';
 
 import { getFitnessCurve } from '../lib/api';
+import { Spinner } from './Spinner';
 
 interface Props {
   events: EvolutionEvent[];
@@ -36,14 +37,18 @@ export function FitnessCurve({ events }: Props) {
   // Re-fetch curve when a generation.evolved event arrives.
   useEffect(() => {
     const last = events.at(-1);
-    if (!last || last.type !== 'generation.evolved') return;
+    if (!last || last.event_type !== 'generation.evolved') return;
     getFitnessCurve()
       .then((r) => setData(r.series))
       .catch(() => undefined);
   }, [events]);
 
   if (loading) {
-    return <div className="text-xs text-zinc-500">Loading fitness curve…</div>;
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Spinner label="Loading fitness curve…" />
+      </div>
+    );
   }
   if (data.length === 0) {
     return <div className="text-xs text-rose-400">No fitness data yet.</div>;

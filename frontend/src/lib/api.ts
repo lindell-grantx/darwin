@@ -1,5 +1,5 @@
 import type {
-  Champion,
+  ChampionRecord,
   FitnessCurveResponse,
   LineageResponse,
   PopulationResponse,
@@ -36,7 +36,7 @@ export function getLineage(genomeId: string): Promise<LineageResponse> {
   return get(`/lineage/${encodeURIComponent(genomeId)}`);
 }
 
-export function getChampions(): Promise<Champion[]> {
+export function getChampions(): Promise<ChampionRecord[]> {
   return get('/champions');
 }
 

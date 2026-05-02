@@ -1,8 +1,7 @@
 import { Hono } from 'hono';
 import { ObjectId } from 'mongodb';
-import type { LineageResponse } from '../../../src/contracts.ts';
-import { genomes } from '../db/client.ts';
-import { computeGeneDiff, toGenomeSummary } from '../db/mappers.ts';
+import type { LineageNode, LineageResponse } from '../../../src/contracts.ts';
+import { champions as championsCol, genomes } from '../db/client.ts';
 import { mockLineage, withMock } from '../db/mock.ts';
 
 export const lineage = new Hono();
@@ -21,35 +20,46 @@ lineage.get('/:genomeId', async (c) => {
     const rootDoc = await genomes().findOne({ _id: oid });
     if (!rootDoc) return null;
 
-    const ancestors: LineageResponse['ancestors'] = [];
-    const queue: Array<{ doc: typeof rootDoc; depth: number }> = [{ doc: rootDoc, depth: 0 }];
-    const seen = new Set<string>([idStr]);
+    // BFS up the ancestry tree, capped at 50 nodes.
+    type GenomeDoc = typeof rootDoc;
+    const collected = new Map<string, GenomeDoc>();
+    collected.set(idStr, rootDoc);
+    const queue: GenomeDoc[] = [rootDoc];
 
-    while (queue.length > 0) {
-      const { doc, depth } = queue.shift()!;
-      if (depth >= 10 || doc.parent_ids.length === 0) continue;
-
+    while (queue.length > 0 && collected.size < 50) {
+      const doc = queue.shift()!;
+      if (doc.parent_ids.length === 0) continue;
       const parents = await genomes()
         .find({ _id: { $in: doc.parent_ids } })
         .toArray();
-
       for (const parent of parents) {
-        const parentId = parent._id.toHexString();
-        if (seen.has(parentId)) continue;
-        seen.add(parentId);
-        ancestors.push({
-          genome: toGenomeSummary(parent),
-          gene_diff: computeGeneDiff(parent, doc),
-          depth: depth + 1,
-        });
-        queue.push({ doc: parent, depth: depth + 1 });
+        const pid = parent._id.toHexString();
+        if (!collected.has(pid)) {
+          collected.set(pid, parent);
+          queue.push(parent);
+        }
       }
     }
 
-    return {
-      genome: toGenomeSummary(rootDoc),
-      ancestors,
-    };
+    const championIds = new Set(
+      (await championsCol()
+        .find({}, { projection: { original_genome_id: 1 } })
+        .toArray()).map((ch) => ch.original_genome_id.toHexString()),
+    );
+
+    const nodes: LineageNode[] = [...collected.values()].map((doc) => ({
+      id: doc._id.toHexString(),
+      generation: doc.generation,
+      parent_ids: doc.parent_ids.map((id) => id.toHexString()),
+      fitness: {
+        composite: doc.fitness.composite,
+        last_updated: doc.fitness.last_updated.toISOString(),
+      },
+      retrieval_genes: doc.retrieval_genes,
+      is_champion: championIds.has(doc._id.toHexString()),
+    }));
+
+    return { genome_id: idStr, nodes };
   }, mockLineage(idStr));
 
   return c.json(data);

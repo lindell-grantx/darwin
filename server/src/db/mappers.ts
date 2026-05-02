@@ -5,10 +5,14 @@ export function toGenomeSummary(doc: GenomeDoc): GenomeSummary {
   return {
     id: doc._id.toHexString(),
     generation: doc.generation,
-    retrieval_genes: doc.retrieval_genes as unknown as Record<string, unknown>,
-    coordination_genes: doc.coordination_genes as unknown as Record<string, unknown>,
-    durability_genes: doc.durability_genes as unknown as Record<string, unknown>,
-    fitness_composite: doc.fitness.composite,
+    status: doc.status,
+    fitness: {
+      composite: doc.fitness.composite,
+      last_updated: doc.fitness.last_updated.toISOString(),
+    },
+    retrieval_genes: doc.retrieval_genes,
+    coordination_genes: doc.coordination_genes,
+    durability_genes: doc.durability_genes,
   };
 }
 
