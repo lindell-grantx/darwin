@@ -29,7 +29,6 @@ import asyncio
 import logging
 import os
 import signal
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,6 +37,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+
+from darwin.lib.secrets import resolve_gcp_secret  # noqa: E402
 
 from darwin.agents.runner import evaluate as agents_evaluate  # noqa: E402
 from darwin.db.client import close_client, get_db  # noqa: E402
@@ -60,15 +61,9 @@ def _now() -> datetime:
 def _resolve_mongo_uri() -> None:
     if os.environ.get("MONGODB_URI") or os.environ.get("MONGO_URI"):
         return
-    try:
-        uri = subprocess.check_output(
-            ["gcloud", "secrets", "versions", "access", "latest",
-             "--secret=darwin-mongodb-uri", "--project=grantx-fleet"],
-            text=True,
-        ).strip()
+    uri = resolve_gcp_secret("darwin-mongodb-uri")
+    if uri:
         os.environ["MONGODB_URI"] = uri
-    except Exception as exc:
-        log.warning("could not auto-resolve MONGODB_URI from gcloud: %s", exc)
 
 
 class _MinimalBlackboard:

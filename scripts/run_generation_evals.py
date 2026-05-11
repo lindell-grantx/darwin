@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Fire 120 evals (24 genomes × 5 queries) against the live /evaluate endpoint.
+"""Fire 120 evals (24 genomes x 5 queries) against the live /evaluate endpoint.
 
 Drives one generation's evaluation phase. The conductor (running as
 darwin-evolution.service on the VM) watches fitness_evaluations via change
 stream and auto-rolls to the next generation when the threshold is met.
 
 Usage:
-    EVAL_API=http://34.68.149.21:8080 python scripts/run_generation_evals.py
+    EVAL_API=http://localhost:8080 python scripts/run_generation_evals.py
 """
 
 from __future__ import annotations
@@ -15,7 +15,6 @@ import argparse
 import asyncio
 import logging
 import os
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -27,6 +26,8 @@ import httpx
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from darwin.lib.secrets import resolve_gcp_secret  # noqa: E402
+
 from darwin.db.client import close_client, get_db  # noqa: E402
 from darwin.db.schemas import COLLECTION_FITNESS_EVALUATIONS, COLLECTION_GENOMES, COLLECTION_QUERIES  # noqa: E402
 
@@ -34,7 +35,7 @@ from darwin.db.schemas import COLLECTION_FITNESS_EVALUATIONS, COLLECTION_GENOMES
 log = logging.getLogger(__name__)
 
 
-DEFAULT_API = "http://34.68.149.21:8080"
+DEFAULT_API = "http://localhost:8080"
 QUERIES_PER_GENOME = 5
 CONCURRENCY = 6
 PER_CALL_TIMEOUT_SEC = 90.0
@@ -43,15 +44,9 @@ PER_CALL_TIMEOUT_SEC = 90.0
 def _resolve_uri() -> None:
     if os.environ.get("MONGODB_URI") or os.environ.get("MONGO_URI"):
         return
-    try:
-        uri = subprocess.check_output(
-            ["gcloud", "secrets", "versions", "access", "latest",
-             "--secret=darwin-mongodb-uri", "--project=grantx-fleet"],
-            text=True,
-        ).strip()
+    uri = resolve_gcp_secret("darwin-mongodb-uri")
+    if uri:
         os.environ["MONGODB_URI"] = uri
-    except Exception as exc:
-        log.warning("could not resolve MONGODB_URI: %s", exc)
 
 
 async def _pick_queries(db, n: int) -> list[dict[str, Any]]:
