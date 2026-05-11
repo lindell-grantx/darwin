@@ -6,6 +6,7 @@ dist/
 .DS_Store
 .idea/
 .vscode/
+.claude/
 
 # Python
 .venv/
