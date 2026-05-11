@@ -1,6 +1,6 @@
-# Darwin — Architecture Proposal & Build Map
+# Darwin — Architecture
 
-**Build window:** 5.5h · **Team:** 3 humans + fleet (alpha, beta, scout, reviewer, approver) · **Demo:** May 2 2026, MongoDB Agentic Evolution Hackathon London
+An overview of Darwin's components and data flow.
 
 ---
 
@@ -275,12 +275,12 @@ If Streamlit breaks at hour 5, this terminal is the demo. It's intentionally bea
 | # | Stream | Owner | Hours | Hard deps | Deliverable |
 |---|---|---|---|---|---|
 | **A** | Atlas + corpus seeding | Human #1 | 1.5 | — | Atlas cluster live, indexes created (vector index on `chunks.embeddings.voyage_4`, time-series on `generations`), `chunks` populated with 4 embedding variants × ~500 chunks, `queries` seeded with 25 eval Q&A pairs |
-| **B** | Genome + evolution engine | Human #2 + **alpha** | 3.0 | schemas.py from A (30min in) | `src/darwin/genome/*`, `src/darwin/evolution/*`, change-stream conductor, passing test_evolution.py with mocked Voyage |
-| **C** | Retrieval + agent runner + judge | Human #3 + **beta** | 2.5 | schemas.py from A (30min in) | `src/darwin/retrieval/*`, `src/darwin/agents/*`, `src/darwin/fitness/*`, end-to-end `evaluate()` writing real fitness_evaluations |
-| **D** | API server + SSE | **alpha** (after B@2h) | 1.0 | B+C joinable | FastAPI with all 7 endpoints, SSE wired to conductor events |
-| **E** | UI (Streamlit) | **scout** | 2.0 | Mock data fixtures from B@1h, real API at hour 4.5 | `ui/streamlit_app.py` with three panels, polling fallback if SSE flakes |
+| **B** | Genome + evolution engine | Human #2 | 3.0 | schemas.py from A (30min in) | `src/darwin/genome/*`, `src/darwin/evolution/*`, change-stream conductor, passing test_evolution.py with mocked Voyage |
+| **C** | Retrieval + agent runner + judge | Human #3 | 2.5 | schemas.py from A (30min in) | `src/darwin/retrieval/*`, `src/darwin/agents/*`, `src/darwin/fitness/*`, end-to-end `evaluate()` writing real fitness_evaluations |
+| **D** | API server + SSE | — | 1.0 | B+C joinable | FastAPI with all 7 endpoints, SSE wired to conductor events |
+| **E** | UI (Streamlit) | — | 2.0 | Mock data fixtures from B@1h, real API at hour 4.5 | `ui/streamlit_app.py` with three panels, polling fallback if SSE flakes |
 | **F** | Demo recording + script | Human #1 (after A) | 1.0 | Terminal demo working (hour 4) | 90s video, narration script, live-anchor 15-30s plan |
-| **G** | Tests + dress rehearsal | **reviewer** + **approver** | continuous | — | Smoke test suite, final 30-min dress rehearsal at hour 5 |
+| **G** | Tests + dress rehearsal | — | continuous | — | Smoke test suite, final 30-min dress rehearsal at hour 5 |
 
 **Sync points:** hour 2 (schemas + corpus done), hour 4 (E2E single generation works), hour 5 (lock the build, dress rehearsal only).
 
@@ -340,17 +340,3 @@ If Streamlit breaks at hour 5, this terminal is the demo. It's intentionally bea
 - **Tournament + elite selection** — well-understood, hard to bug, demo-friendly because elite preservation guarantees fitness curve never drops.
 - **Pre-recorded video + live anchor** — venue WiFi is the #1 demo killer; the video is the safety net, the live anchor is the wow.
 
----
-
-```
-RESULT:
-- What was done: Produced a complete 9-section Darwin architecture proposal — component map, ASCII data flow, file-level module layout, evolution-loop pseudocode (with explicit MongoDB ops), multi-agent blackboard pattern, demo architecture (Streamlit primary + Rich terminal fallback), 7-stream parallel work plan for 3 humans + fleet over 5.5h, hour-3/hour-5 cut lines + MVP definition, and a beat-by-beat 60s demo narrative.
-- Files changed: None — repo is not cloned in this workspace. Recommend committing this response as `darwin/ARCHITECTURE.md` (dispatch alpha or scout with --repo git@github.com:lindell-grantx/darwin.git).
-- Verification: Cross-checked every section against the locked decisions in fleet memory — six-collection schema (genomes, generations, queries, fitness_evaluations, chunks, champions), Atlas + Voyage-4 + Python 3.12+ stack, three hackathon themes (adaptive retrieval primary, multi-agent secondary, prolonged coordination tertiary), 5.5h build window, 90s + live-anchor demo format. Pseudocode references the exact field names from the locked schema (retrieval_trace, components, composite_fitness, parent_ids, etc.). Work-stream dependencies form a valid DAG with critical path A → schemas → B/C → D → E → F.
-- Open items:
-  - DECISION NEEDED: Streamlit vs Next.js for UI (I picked Streamlit; flag if team has a frontend specialist who'd be faster in Next.js).
-  - DECISION NEEDED: number of genomes per generation (proposed 16, cuttable to 8 at hour 5).
-  - DECISION NEEDED: which 25 eval queries to seed — needs domain pick (technical docs? legal? mixed?). Suggest dispatching a scout task to draft the eval set in parallel with stream A.
-  - Not addressed: deployment URL backstop (mentioned in fleet-memory build constraints) — recommend a separate stream after hour 4 to push api_server to a hosted target (Railway / Fly / Modal). Add as Stream H if we can spare scout cycles.
-  - grantx-kb CLI is uncredentialed in this workspace (FLEET_SUPABASE_URL not set). Did not write this architecture as a knowledge entry; recommend conductor or human run the kb write.
-```
