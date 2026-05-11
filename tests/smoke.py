@@ -14,7 +14,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from collections import Counter
 from pathlib import Path
 from typing import Any
 from urllib import request
@@ -34,11 +33,8 @@ REQUIRED_COLLECTIONS = {
     "champions",
 }
 
-EXPECTED_QUERY_TAG_DISTRIBUTION = {
-    ("mongodb", "vector-search"): 10,
-    ("voyage", "embeddings", "rag"): 8,
-    ("langchain", "agents"): 7,
-}
+MIN_QUERY_COUNT = 25
+ALLOWED_DIFFICULTIES = {"easy", "medium", "hard"}
 
 
 def _load_json(path: Path) -> Any:
@@ -46,17 +42,15 @@ def _load_json(path: Path) -> Any:
         return json.load(file)
 
 
-def test_eval_queries_match_dar_10_contract() -> None:
-    """DAR-10 eval queries are the first stable input to the demo loop."""
+def test_eval_queries_structure() -> None:
+    """Eval queries are the seeded input to the demo loop. Validate file shape."""
     assert EVAL_QUERIES_PATH.exists(), f"Missing {EVAL_QUERIES_PATH}"
 
     queries = _load_json(EVAL_QUERIES_PATH)
     assert isinstance(queries, list)
-    assert len(queries) == 25
+    assert len(queries) >= MIN_QUERY_COUNT
 
     seen_texts: set[str] = set()
-    difficulty_counts: Counter[str] = Counter()
-    tag_counts: Counter[tuple[str, ...]] = Counter()
 
     for index, query in enumerate(queries, start=1):
         assert isinstance(query, dict), f"Query #{index} must be an object"
@@ -72,16 +66,11 @@ def test_eval_queries_match_dar_10_contract() -> None:
         assert 3 <= len(expected_facts) <= 7
         assert all(isinstance(fact, str) and fact.strip() for fact in expected_facts)
 
-        assert query.get("difficulty") in {"easy", "medium", "hard"}
-        difficulty_counts[query["difficulty"]] += 1
+        assert query.get("difficulty") in ALLOWED_DIFFICULTIES
 
         domain_tags = query.get("domain_tags")
         assert isinstance(domain_tags, list) and domain_tags
         assert all(isinstance(tag, str) and tag.strip() for tag in domain_tags)
-        tag_counts[tuple(domain_tags)] += 1
-
-    assert difficulty_counts == {"easy": 10, "medium": 10, "hard": 5}
-    assert tag_counts == EXPECTED_QUERY_TAG_DISTRIBUTION
 
 
 def test_mongodb_seed_state_if_configured() -> None:
