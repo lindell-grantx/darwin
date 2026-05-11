@@ -11,7 +11,7 @@ Two long-lived asyncio tasks share one Mongo client:
 Environment expected:
     MONGODB_URI                   (or fall through to gcloud secret darwin-mongodb-uri)
     VOYAGE_API_KEY                (or gcloud secret darwin-voyage-key)
-    ANTHROPIC_VERTEX_PROJECT_ID   (default grantx-fleet)
+    ANTHROPIC_VERTEX_PROJECT_ID   (required — your GCP project)
     CLOUD_ML_REGION               (default global)
 
 Pass --use-polling to force the conductor's polling fallback path even if
@@ -26,7 +26,6 @@ import asyncio
 import logging
 import os
 import signal
-import subprocess
 import sys
 from pathlib import Path
 
@@ -34,6 +33,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
+
+from darwin.lib.secrets import resolve_gcp_secret  # noqa: E402
 
 from darwin.db.client import close_client, get_db  # noqa: E402
 from darwin.evolution.conductor import watch_evaluations  # noqa: E402
@@ -47,33 +48,20 @@ log = logging.getLogger("darwin.run_all")
 def _resolve_mongo_uri() -> None:
     if os.environ.get("MONGODB_URI") or os.environ.get("MONGO_URI"):
         return
-    try:
-        uri = subprocess.check_output(
-            ["gcloud", "secrets", "versions", "access", "latest",
-             "--secret=darwin-mongodb-uri", "--project=grantx-fleet"],
-            text=True,
-        ).strip()
+    uri = resolve_gcp_secret("darwin-mongodb-uri")
+    if uri:
         os.environ["MONGODB_URI"] = uri
-    except Exception as exc:
-        log.warning("could not auto-resolve MONGODB_URI from gcloud: %s", exc)
 
 
 def _resolve_voyage_key() -> None:
     if os.environ.get("VOYAGE_API_KEY"):
         return
-    try:
-        key = subprocess.check_output(
-            ["gcloud", "secrets", "versions", "access", "latest",
-             "--secret=darwin-voyage-key", "--project=grantx-fleet"],
-            text=True,
-        ).strip()
+    key = resolve_gcp_secret("darwin-voyage-key")
+    if key:
         os.environ["VOYAGE_API_KEY"] = key
-    except Exception as exc:
-        log.warning("could not auto-resolve VOYAGE_API_KEY from gcloud: %s", exc)
 
 
 def _set_vertex_defaults() -> None:
-    os.environ.setdefault("ANTHROPIC_VERTEX_PROJECT_ID", "grantx-fleet")
     os.environ.setdefault("CLOUD_ML_REGION", "global")
 
 

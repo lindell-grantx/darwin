@@ -18,13 +18,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import subprocess
 import sys
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+
+from darwin.lib.secrets import resolve_gcp_secret  # noqa: E402
 
 from darwin.db.client import close_client, get_db  # noqa: E402
 from darwin.db.schemas import (  # noqa: E402
@@ -46,15 +47,9 @@ POP_SIZE = 24
 def _resolve_uri() -> None:
     if os.environ.get("MONGODB_URI") or os.environ.get("MONGO_URI"):
         return
-    try:
-        uri = subprocess.check_output(
-            ["gcloud", "secrets", "versions", "access", "latest",
-             "--secret=darwin-mongodb-uri", "--project=grantx-fleet"],
-            text=True,
-        ).strip()
+    uri = resolve_gcp_secret("darwin-mongodb-uri")
+    if uri:
         os.environ["MONGODB_URI"] = uri
-    except Exception as exc:
-        log.warning("could not resolve MONGODB_URI: %s", exc)
 
 
 async def main() -> None:
