@@ -11,7 +11,7 @@ Two long-lived asyncio tasks share one Mongo client:
 Environment expected:
     MONGODB_URI                   (or fall through to gcloud secret darwin-mongodb-uri)
     VOYAGE_API_KEY                (or gcloud secret darwin-voyage-key)
-    ANTHROPIC_VERTEX_PROJECT_ID   (default grantx-fleet)
+    ANTHROPIC_VERTEX_PROJECT_ID   (required — your GCP project)
     CLOUD_ML_REGION               (default global)
 
 Pass --use-polling to force the conductor's polling fallback path even if
@@ -62,7 +62,6 @@ def _resolve_voyage_key() -> None:
 
 
 def _set_vertex_defaults() -> None:
-    os.environ.setdefault("ANTHROPIC_VERTEX_PROJECT_ID", "grantx-fleet")
     os.environ.setdefault("CLOUD_ML_REGION", "global")
 
 

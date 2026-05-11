@@ -6,7 +6,7 @@ budget is the upper bound on thinking tokens; the model uses what it needs,
 which gives the "adaptive" behaviour.
 
 Env vars:
-    ANTHROPIC_VERTEX_PROJECT_ID  (default: grantx-fleet)
+    ANTHROPIC_VERTEX_PROJECT_ID  (required — your GCP project)
     CLOUD_ML_REGION              (default: global)
     DARWIN_CLAUDE_MODEL          (default: claude-opus-4-6)
     DARWIN_THINKING_BUDGET       (default: 1024)
@@ -21,7 +21,7 @@ from typing import Any, Optional
 
 DEFAULT_MODEL = "claude-opus-4-6"
 DEFAULT_THINKING_BUDGET = 1024
-DEFAULT_PROJECT = "grantx-fleet"
+DEFAULT_PROJECT = None
 DEFAULT_REGION = "global"
 
 
@@ -29,7 +29,12 @@ _client = None
 
 
 def _get_project() -> str:
-    return os.environ.get("ANTHROPIC_VERTEX_PROJECT_ID") or DEFAULT_PROJECT
+    project = os.environ.get("ANTHROPIC_VERTEX_PROJECT_ID")
+    if not project:
+        raise RuntimeError(
+            "ANTHROPIC_VERTEX_PROJECT_ID is not set. Export it with your GCP project ID."
+        )
+    return project
 
 
 def _get_region() -> str:

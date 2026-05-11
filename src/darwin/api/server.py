@@ -10,7 +10,7 @@ endpoint for live demo queries; the queue is for the evolution loop's bulk
 work.
 
 Run locally:
-    MONGODB_URI=...  VOYAGE_API_KEY=...  ANTHROPIC_VERTEX_PROJECT_ID=grantx-fleet \\
+    MONGODB_URI=...  VOYAGE_API_KEY=...  ANTHROPIC_VERTEX_PROJECT_ID=your-gcp-project \\
         uvicorn darwin.api.server:app --host 0.0.0.0 --port 8080
 
 Endpoints:
@@ -76,7 +76,6 @@ def _ensure_secrets() -> None:
 
 def _bootstrap_env() -> None:
     _ensure_secrets()
-    os.environ.setdefault("ANTHROPIC_VERTEX_PROJECT_ID", "grantx-fleet")
     os.environ.setdefault("CLOUD_ML_REGION", "global")
 
 

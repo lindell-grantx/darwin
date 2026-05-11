@@ -19,7 +19,7 @@ Hono inserts `{status: 'pending', text: '...'}` documents. This worker:
      stops waiting and returns a 502.
 
 Usage:
-    MONGODB_URI=...  ANTHROPIC_VERTEX_PROJECT_ID=grantx-fleet  CLOUD_ML_REGION=global \\
+    MONGODB_URI=...  ANTHROPIC_VERTEX_PROJECT_ID=your-gcp-project  CLOUD_ML_REGION=global \\
         python scripts/run_query_worker.py
 """
 
