@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import logging
 import os
-import subprocess
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -44,6 +43,7 @@ from darwin.db.schemas import (
     COLLECTION_GENOMES,
     COLLECTION_QUERIES,
 )
+from darwin.lib.secrets import resolve_gcp_secret
 
 
 class _MinimalBlackboard:
@@ -62,25 +62,20 @@ log = logging.getLogger("darwin.api")
 # ---------------- env / startup helpers ----------------
 
 
-def _resolve_secret_from_gcloud(secret: str, env_var: str) -> None:
-    if os.environ.get(env_var):
-        return
-    try:
-        value = subprocess.check_output(
-            [
-                "gcloud", "secrets", "versions", "access", "latest",
-                f"--secret={secret}", "--project=grantx-fleet",
-            ],
-            text=True,
-        ).strip()
-        os.environ[env_var] = value
-    except Exception as exc:
-        log.warning("could not auto-resolve %s from gcloud secret %s: %s", env_var, secret, exc)
+def _ensure_secrets() -> None:
+    for secret_name, env_var in (
+        ("darwin-mongodb-uri", "MONGODB_URI"),
+        ("darwin-voyage-key", "VOYAGE_API_KEY"),
+    ):
+        if os.environ.get(env_var):
+            continue
+        value = resolve_gcp_secret(secret_name)
+        if value:
+            os.environ[env_var] = value
 
 
 def _bootstrap_env() -> None:
-    _resolve_secret_from_gcloud("darwin-mongodb-uri", "MONGODB_URI")
-    _resolve_secret_from_gcloud("darwin-voyage-key", "VOYAGE_API_KEY")
+    _ensure_secrets()
     os.environ.setdefault("ANTHROPIC_VERTEX_PROJECT_ID", "grantx-fleet")
     os.environ.setdefault("CLOUD_ML_REGION", "global")
 
