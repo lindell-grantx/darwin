@@ -99,6 +99,10 @@ class RetrievalGenes(_Base):
     confidence_threshold: float = Field(ge=0.0, le=1.0)
     top_k: int = Field(ge=1, le=50)
     source_routing: list[SourceTag] = Field(min_length=1)
+    search_depth_policy: float = Field(default=0.5, ge=0.0, le=1.0,
+        description="v2: confidence threshold below which the agent triggers "
+                    "additional retrieval rounds. 0.0=always re-retrieve, "
+                    "1.0=never re-retrieve. AutoSearch lineage (arXiv 2604.17337).")
 
 
 class CoordinationGenes(_Base):
@@ -106,6 +110,10 @@ class CoordinationGenes(_Base):
     consult_threshold: float = Field(ge=0.0, le=1.0, default=0.7)
     timeout_ms: int = Field(ge=100, le=10_000, default=2_000)
     debate_rounds: int = Field(ge=1, le=3, default=2)
+    signal_decay_rate: float = Field(default=1.0, ge=0.0, le=1.0,
+        description="v2: per-cycle decay rate for blackboard contributions; "
+                    "0.0=no decay, 1.0=full decay each cycle. Mandatory per "
+                    "stigmergy literature (Pressure-Field, ICLR 2026).")
 
 
 class GenerationGenes(_Base):
