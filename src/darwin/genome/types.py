@@ -42,9 +42,11 @@ _NUMERIC_RANGES: dict[str, tuple[float, float]] = {
     "retrieval_genes.chunk_overlap": (0.0, 0.5),
     "retrieval_genes.confidence_threshold": (0.0, 1.0),
     "retrieval_genes.top_k": (3.0, 20.0),
+    "retrieval_genes.search_depth_policy": (0.0, 1.0),
     "coordination_genes.consult_threshold": (0.0, 1.0),
     "coordination_genes.timeout_ms": (500.0, 5000.0),
     "coordination_genes.debate_rounds": (1.0, 3.0),
+    "coordination_genes.signal_decay_rate": (0.0, 1.0),
     "generation_genes.temperature": (0.0, 1.0),
     "generation_genes.max_tokens": (128.0, 2048.0),
 }

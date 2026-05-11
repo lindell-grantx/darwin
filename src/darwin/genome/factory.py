@@ -60,10 +60,12 @@ def random_genome(
     - retrieval_genes.confidence_threshold: float in [0.0, 1.0]
     - retrieval_genes.top_k: int in [3, 20]
     - retrieval_genes.source_routing: non-empty subset of {mongodb, voyage, langchain}
+    - retrieval_genes.search_depth_policy: float in [0.0, 1.0]
     - coordination_genes.protocol: one of {solo, vote, consult, debate}
     - coordination_genes.consult_threshold: float in [0.0, 1.0]
     - coordination_genes.timeout_ms: int in [500, 5000]
     - coordination_genes.debate_rounds: int in [1, 3]
+    - coordination_genes.signal_decay_rate: float in [0.0, 1.0]
     - generation_genes.model: one of {claude-haiku-4-5-20251001, claude-sonnet-4-6}
     - generation_genes.temperature: float in [0.0, 1.0]
     - generation_genes.max_tokens: int in [128, 2048]
@@ -87,6 +89,7 @@ def random_genome(
         confidence_threshold=rng.uniform(0.0, 1.0),
         top_k=rng.randint(3, 20),
         source_routing=_sample_source_routing(rng),
+        search_depth_policy=rng.uniform(0.0, 1.0),
     )
 
     coordination = CoordinationGenes(
@@ -94,6 +97,7 @@ def random_genome(
         consult_threshold=rng.uniform(0.0, 1.0),
         timeout_ms=rng.randint(500, 5000),
         debate_rounds=rng.randint(1, 3),
+        signal_decay_rate=rng.uniform(0.0, 1.0),
     )
 
     generation_genes = GenerationGenes(

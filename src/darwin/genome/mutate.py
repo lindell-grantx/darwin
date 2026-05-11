@@ -36,6 +36,8 @@ _FLOAT_BOUNDS: dict[str, tuple[float, float]] = {
     "confidence_threshold": (0.0, 1.0),
     "consult_threshold": (0.0, 1.0),
     "temperature": (0.0, 1.5),
+    "search_depth_policy": (0.0, 1.0),
+    "signal_decay_rate": (0.0, 1.0),
 }
 
 _INT_BOUNDS: dict[str, tuple[int, int]] = {
@@ -154,6 +156,10 @@ def mutate(
         _mutate_float(r.confidence_threshold, *_FLOAT_BOUNDS["confidence_threshold"], rng)
         if _maybe(rng, rate) else r.confidence_threshold
     )
+    search_depth_policy = (
+        _mutate_float(r.search_depth_policy, *_FLOAT_BOUNDS["search_depth_policy"], rng)
+        if _maybe(rng, rate) else r.search_depth_policy
+    )
     top_k = (
         _mutate_int(r.top_k, *_INT_BOUNDS["top_k"], rng)
         if _maybe(rng, rate) else r.top_k
@@ -174,6 +180,7 @@ def mutate(
         confidence_threshold=confidence_threshold,
         top_k=top_k,
         source_routing=source_routing,
+        search_depth_policy=search_depth_policy,
     )
 
     protocol = (
@@ -183,6 +190,10 @@ def mutate(
     consult_threshold = (
         _mutate_float(c.consult_threshold, *_FLOAT_BOUNDS["consult_threshold"], rng)
         if _maybe(rng, rate) else c.consult_threshold
+    )
+    signal_decay_rate = (
+        _mutate_float(c.signal_decay_rate, *_FLOAT_BOUNDS["signal_decay_rate"], rng)
+        if _maybe(rng, rate) else c.signal_decay_rate
     )
     timeout_ms = (
         _mutate_int(c.timeout_ms, *_INT_BOUNDS["timeout_ms"], rng)
@@ -198,6 +209,7 @@ def mutate(
         consult_threshold=consult_threshold,
         timeout_ms=timeout_ms,
         debate_rounds=debate_rounds,
+        signal_decay_rate=signal_decay_rate,
     )
 
     model = (
