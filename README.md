@@ -155,7 +155,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, branch conventions
 
 ## About
 
-Built by [Lindell Cummins](https://github.com/lindell-grantx), [Andrey](https://github.com/Systerr), and [Liangxiao LI](https://github.com/Liangxiao-LI). Maintained as open research from [GrantX](https://grantx.io).
+Origins: prior research at t5 labs (RAG benchmarking and evolutionary search prototypes); implementation at the MongoDB Agentic Evolution Hackathon (London, May 2 2026). Built by [Lindell Cumes](https://github.com/lindell-grantx), [Andrey](https://github.com/Systerr), and [Liangxiao LI](https://github.com/Liangxiao-LI). Maintained as open research from [GrantX](https://grantx.io).
 
 ## License
 
