@@ -2,14 +2,13 @@
 
 URI resolution order:
 1. `MONGODB_URI` / `MONGO_URI` environment variable
-2. `gcloud secrets versions access latest --secret=darwin-mongodb-uri --project=grantx-fleet`
+2. GCP Secret Manager via `DARWIN_GCP_SECRET_PROJECT` (see darwin.lib.secrets)
 """
 
 from __future__ import annotations
 
 import asyncio
 import os
-import subprocess
 from typing import AsyncIterator, Optional
 
 from motor.motor_asyncio import (
@@ -19,10 +18,10 @@ from motor.motor_asyncio import (
     AsyncIOMotorDatabase,
 )
 
+from darwin.lib.secrets import resolve_gcp_secret
+
 
 DATABASE_NAME = "darwin"
-_SECRET_NAME = "darwin-mongodb-uri"
-_SECRET_PROJECT = "grantx-fleet"
 
 _client_lock = asyncio.Lock()
 _client: Optional[AsyncIOMotorClient] = None
@@ -32,30 +31,13 @@ def _resolve_uri() -> str:
     uri = os.environ.get("MONGODB_URI") or os.environ.get("MONGO_URI")
     if uri:
         return uri
-    try:
-        result = subprocess.run(
-            [
-                "gcloud",
-                "secrets",
-                "versions",
-                "access",
-                "latest",
-                f"--secret={_SECRET_NAME}",
-                f"--project={_SECRET_PROJECT}",
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except (FileNotFoundError, subprocess.CalledProcessError) as exc:
-        raise RuntimeError(
-            "MongoDB URI not set. Export MONGODB_URI or ensure gcloud can read "
-            f"secret {_SECRET_NAME} in {_SECRET_PROJECT}."
-        ) from exc
-    uri = result.stdout.strip()
-    if not uri:
-        raise RuntimeError(f"Secret {_SECRET_NAME} returned an empty URI.")
-    return uri
+    uri = resolve_gcp_secret("darwin-mongodb-uri")
+    if uri:
+        return uri
+    raise RuntimeError(
+        "MongoDB URI not set. Export MONGODB_URI or set "
+        "DARWIN_GCP_SECRET_PROJECT to use gcloud secret resolution."
+    )
 
 
 async def get_client() -> AsyncIOMotorClient:
