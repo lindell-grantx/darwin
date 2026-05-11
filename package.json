@@ -1,8 +1,17 @@
 {
   "name": "darwin",
-  "private": true,
   "version": "0.0.1",
   "description": "Darwin — Evolutionary Adaptive Retrieval (MongoDB Agentic Evolution Hackathon, London 2026)",
+  "license": "MIT",
+  "author": "GrantX, Inc.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lindell-grantx/darwin.git"
+  },
+  "homepage": "https://github.com/lindell-grantx/darwin#readme",
+  "bugs": {
+    "url": "https://github.com/lindell-grantx/darwin/issues"
+  },
   "engines": {
     "node": ">=24"
   },
