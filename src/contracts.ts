@@ -164,6 +164,13 @@ export interface QueryRequest {
   text: string;
 }
 
+export interface QueryRoutingInfo {
+  bucket_key: string[] | null;
+  bucket_cosine: number | null;
+  nash_strategy_id: string | null;
+  sampled_defender_id: string | null;
+}
+
 export interface QueryResponse {
   run_id: string;
   answer: string;
@@ -171,6 +178,7 @@ export interface QueryResponse {
   fitness: FitnessComponents;
   composite_fitness: number;
   retrieval_trace: RetrievalTraceItem[];
+  routing?: QueryRoutingInfo;
 }
 
 export interface PopulationResponse {

@@ -340,3 +340,44 @@ If Streamlit breaks at hour 5, this terminal is the demo. It's intentionally bea
 - **Tournament + elite selection** — well-understood, hard to bug, demo-friendly because elite preservation guarantees fitness curve never drops.
 - **Pre-recorded video + live anchor** — venue WiFi is the #1 demo killer; the video is the safety net, the live anchor is the wow.
 
+---
+
+## v2 MVP — Co-evolution substrate (week 1-2)
+
+The v2 MVP introduces a thin end-to-end loop where defenders are evaluated not just on clean queries, but also against a static set of 10 hand-curated attackers (5 corpus_poison + 5 prompt_injection). Defender selection at inference time samples from a uniform mixed strategy over the top-1 defender per difficulty bucket (easy / medium / hard).
+
+### New collections
+
+- `attackers` — static MVP fixtures (Pass 2 makes these evolvable)
+- `nash_strategies` — snapshots of the mixed strategy after each recompute
+- `query_type_buckets` — centroid Voyage-4 embeddings per `domain_tags` tuple
+
+### New genes
+
+- `coordination_genes.signal_decay_rate` (continuous, [0,1]) — per-cycle decay rate for blackboard contributions (stigmergy literature).
+- `retrieval_genes.search_depth_policy` (continuous, [0,1]) — confidence threshold below which the agent triggers additional retrieval rounds (AutoSearch lineage).
+
+### Inference path
+
+1. Hono receives `POST /query` and writes a row to `query_runs` (queue path) OR streams via `/evaluate-stream` (live path).
+2. Python supervisor (`scripts/run_query_worker.py` or `src/darwin/api/server.py`'s `/evaluate-stream` handler) routes the query:
+   a. Embeds the query text via Voyage-4.
+   b. Routes to the closest `query_type_bucket` (cosine).
+   c. Loads the latest `nash_strategy` (uniform over top Pareto defenders).
+   d. Samples a defender id from the Nash weights.
+   e. Evaluates the chosen defender on the query.
+   f. Writes the result back with `routing` telemetry.
+3. Hono responds with the answer + routing block.
+
+The shared routing logic lives in `src/darwin/api/inference_routing.py` (`route_query()`).
+
+### Evolution path
+
+Per generation: each defender is evaluated against every query (clean) AND against every attacker that targets the query's tag class. This populates `fitness_evaluations` with `attacker_id=None` rows (clean) and `attacker_id=<id>` rows (attacked). The MVP Nash recompute uses only the clean rows; Pass 2 incorporates attacked rows via PAIRED regret.
+
+Cron runs `scripts/recompute_nash.py` every 15 min to refresh the `NashStrategy` snapshot.
+
+### Hosting
+
+The supervisor (`scripts/run_all.py`) runs as a systemd service on a GCE e2-medium VM (`darwin-supervisor`, `us-central1-a`). Provisioning script: `infra/gce/setup.sh`. Service unit: `infra/systemd/darwin-supervisor.service`. Operational runbook: `infra/README.md`.
+

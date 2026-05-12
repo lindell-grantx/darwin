@@ -41,9 +41,9 @@ sys.path.insert(0, str(ROOT / "src"))
 from darwin.lib.secrets import resolve_gcp_secret  # noqa: E402
 
 from darwin.agents.runner import evaluate as agents_evaluate  # noqa: E402
+from darwin.api.inference_routing import route_query  # noqa: E402
 from darwin.db.client import close_client, get_db  # noqa: E402
 from darwin.db.schemas import (  # noqa: E402
-    COLLECTION_GENOMES,
     COLLECTION_QUERIES,
     COLLECTION_QUERY_RUNS,
 )
@@ -83,15 +83,6 @@ async def _claim(db, run_id: str) -> dict[str, Any] | None:
         {"_id": run_id, "status": "pending"},
         {"$set": {"status": "running", "started_at": _now()}},
         return_document=True,
-    )
-
-
-async def _pick_target_genome(db) -> dict[str, Any] | None:
-    """Highest composite fitness alive/champion genome."""
-
-    return await db[COLLECTION_GENOMES].find_one(
-        {"status": {"$in": ["alive", "champion"]}},
-        sort=[("fitness.composite", -1)],
     )
 
 
@@ -141,7 +132,7 @@ async def _process(db, run_doc: dict[str, Any]) -> None:
         return
 
     try:
-        genome = await _pick_target_genome(db)
+        routing, genome = await route_query(db, text)
         if genome is None:
             raise RuntimeError("no alive genomes available")
         query = await _upsert_query(db, text)
@@ -159,11 +150,17 @@ async def _process(db, run_doc: dict[str, Any]) -> None:
                 "target_genome_id": str(genome["_id"]),
                 # eval_doc["_id"] may be an ObjectId (Mongo-generated) or str — normalise.
                 "evaluation_id": str(eval_doc.get("_id")) if eval_doc.get("_id") is not None else None,
+                "routing": routing,
             }},
         )
         log.info(
-            "[run %s] completed genome=%s composite=%.3f",
-            run_id[:8], genome["_id"][:8], eval_doc.get("composite_fitness", 0.0),
+            "[run %s] completed genome=%s composite=%.3f bucket=%s nash=%s sampled=%s",
+            run_id[:8],
+            str(genome["_id"])[:8],
+            eval_doc.get("composite_fitness", 0.0),
+            routing.get("bucket_key"),
+            (routing.get("nash_strategy_id") or "")[:8] if routing.get("nash_strategy_id") else None,
+            (routing.get("sampled_defender_id") or "")[:8] if routing.get("sampled_defender_id") else None,
         )
     except Exception as exc:
         log.exception("[run %s] failed: %s", run_id[:8], exc)

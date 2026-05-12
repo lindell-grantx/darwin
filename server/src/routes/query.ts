@@ -7,6 +7,7 @@ import type {
   GenomeSummary,
   QueryRequest,
   QueryResponse,
+  QueryRoutingInfo,
   RetrievalGenes,
   RetrievalTraceItem,
 } from '../../../src/contracts.ts';
@@ -32,6 +33,18 @@ interface PyChunkEvent {
   text_preview?: string;
 }
 
+// Loose shape for the routing block the Python worker / evaluate-stream may
+// emit. Each field is optional + nullable: a stream from a pre-Nash deployment
+// (or the genesis state where no Nash strategy / no buckets exist yet) will
+// simply omit it, and Hono surfaces nulls in that case.
+interface PyRoutingEvent {
+  bucket_key?: string[] | null;
+  cosine?: number | null;
+  bucket_cosine?: number | null;
+  nash_strategy_id?: string | null;
+  sampled_defender_id?: string | null;
+}
+
 interface PyDoneEvent {
   run_id: string;
   answer: string;
@@ -39,6 +52,7 @@ interface PyDoneEvent {
   fitness: QueryResponse['fitness'];
   rationale?: string;
   timestamp?: string;
+  routing?: PyRoutingEvent | null;
 }
 
 function buildWinningGenome(g: PyGenomeEvent, runFitness: number): GenomeSummary {
@@ -200,6 +214,13 @@ query.post('/', async (c) => {
           } else if (eventName === 'done') {
             try {
               const py = JSON.parse(dataStr) as PyDoneEvent;
+              const r = py.routing ?? null;
+              const routing: QueryRoutingInfo = {
+                bucket_key: r?.bucket_key ?? null,
+                bucket_cosine: r?.bucket_cosine ?? r?.cosine ?? null,
+                nash_strategy_id: r?.nash_strategy_id ?? null,
+                sampled_defender_id: r?.sampled_defender_id ?? null,
+              };
               const finalResponse: QueryResponse = {
                 run_id: py.run_id,
                 answer: py.answer,
@@ -218,12 +239,16 @@ query.post('/', async (c) => {
                 fitness: py.fitness,
                 composite_fitness: py.composite_fitness,
                 retrieval_trace: trace,
+                routing,
               };
               log('emitting done', {
                 run_id: py.run_id,
                 composite_fitness: py.composite_fitness,
                 trace_len: trace.length,
                 has_genome: !!genome,
+                has_routing: !!py.routing,
+                routing_bucket: routing.bucket_key,
+                routing_defender: routing.sampled_defender_id,
                 elapsed_ms: Date.now() - started,
               });
               await stream.writeSSE({

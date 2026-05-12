@@ -26,6 +26,11 @@ COLLECTION_CHAMPIONS = "champions"
 COLLECTION_QUERY_RUNS = "query_runs"
 COLLECTION_EVOLUTION_EVENTS = "evolution_events"
 
+# v2 MVP collections for adversarial routing (Pass 2).
+COLLECTION_ATTACKERS = "attackers"
+COLLECTION_NASH_STRATEGIES = "nash_strategies"
+COLLECTION_QUERY_TYPE_BUCKETS = "query_type_buckets"
+
 
 EmbeddingModel = Literal[
     "voyage-4-large",
@@ -99,6 +104,10 @@ class RetrievalGenes(_Base):
     confidence_threshold: float = Field(ge=0.0, le=1.0)
     top_k: int = Field(ge=1, le=50)
     source_routing: list[SourceTag] = Field(min_length=1)
+    search_depth_policy: float = Field(default=0.5, ge=0.0, le=1.0,
+        description="v2: confidence threshold below which the agent triggers "
+                    "additional retrieval rounds. 0.0=always re-retrieve, "
+                    "1.0=never re-retrieve. AutoSearch lineage (arXiv 2604.17337).")
 
 
 class CoordinationGenes(_Base):
@@ -106,6 +115,10 @@ class CoordinationGenes(_Base):
     consult_threshold: float = Field(ge=0.0, le=1.0, default=0.7)
     timeout_ms: int = Field(ge=100, le=10_000, default=2_000)
     debate_rounds: int = Field(ge=1, le=3, default=2)
+    signal_decay_rate: float = Field(default=1.0, ge=0.0, le=1.0,
+        description="v2: per-cycle decay rate for blackboard contributions; "
+                    "0.0=no decay, 1.0=full decay each cycle. Mandatory per "
+                    "stigmergy literature (Pressure-Field, ICLR 2026).")
 
 
 class GenerationGenes(_Base):
@@ -228,6 +241,11 @@ class FitnessEvaluation(_Base):
     eval_split: Optional[EvalSplit] = None
     judge_critique: Optional[str] = None
     timestamp: datetime = Field(default_factory=_now)
+    attacker_id: Optional[str] = Field(
+        default=None,
+        description="v2: optional attacker the defender was evaluated against. "
+                    "None for clean (no-attacker) evaluations.",
+    )
 
 
 class Champion(_Base):
@@ -283,4 +301,44 @@ class EvolutionEvent(_Base):
     event_type: EvolutionEventType
     generation: int = Field(ge=0)
     payload: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=_now)
+
+
+# ---------- v2 MVP: adversarial routing ----------
+
+
+AttackVectorType = Literal["corpus_poison", "prompt_injection", "instruction_override"]
+
+
+class Attacker(_Base):
+    """v2 MVP attacker. Static for week-1 fixtures; evolves in Pass 2."""
+
+    id: str = Field(default_factory=_new_id, alias="_id")
+    attack_vector_type: AttackVectorType
+    target_query_class: tuple[str, ...] = Field(
+        description="Query tag tuple this attacker targets, e.g. ('mongodb', 'vector-search')."
+    )
+    payload: str = Field(description="The poison chunk or injection text.")
+    notes: str = ""
+    created_at: datetime = Field(default_factory=_now)
+
+
+class NashStrategy(_Base):
+    """Snapshot of the Nash mixed strategy after a recompute."""
+
+    id: str = Field(default_factory=_new_id, alias="_id")
+    weights: dict[str, float] = Field(
+        description="defender_id -> weight. Should sum to 1.0."
+    )
+    snapshot_generation: int
+    created_at: datetime = Field(default_factory=_now)
+
+
+class QueryTypeBucket(_Base):
+    """Held-out query-type bucket for the query-axis of two-axis Nash routing."""
+
+    id: str = Field(default_factory=_new_id, alias="_id")
+    bucket_key: tuple[str, ...] = Field(description="Tag tuple identifying this bucket.")
+    embedding: list[float] = Field(description="Centroid embedding (Voyage-4 1024-dim).")
+    n_queries: int = Field(description="Number of seeded queries in this bucket.")
     created_at: datetime = Field(default_factory=_now)
