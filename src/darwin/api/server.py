@@ -38,6 +38,7 @@ from pydantic import BaseModel, Field
 import uuid
 
 from darwin.agents.runner import evaluate as agent_evaluate, run_genome
+from darwin.api.inference_routing import route_query
 from darwin.db.client import close_client, get_db
 from darwin.db.schemas import (
     COLLECTION_GENOMES,
@@ -147,6 +148,15 @@ class RetrievalTraceItem(BaseModel):
     position: int
 
 
+class RoutingInfo(BaseModel):
+    """v2 routing telemetry surfaced on each /evaluate response."""
+
+    bucket_key: Optional[list[str]] = None
+    cosine: Optional[float] = None
+    nash_strategy_id: Optional[str] = None
+    sampled_defender_id: Optional[str] = None
+
+
 class EvaluateResponse(BaseModel):
     run_id: str
     answer: str
@@ -156,6 +166,7 @@ class EvaluateResponse(BaseModel):
     retrieval_trace: list[RetrievalTraceItem]
     rationale: Optional[str] = None
     timestamp: str
+    routing: Optional[RoutingInfo] = None
 
 
 # ---------------- helpers ----------------
@@ -178,6 +189,8 @@ def _genome_summary(doc: dict[str, Any]) -> GenomeSummary:
 
 
 async def _pick_genome(db, genome_id: Optional[str]) -> dict[str, Any]:
+    """Explicit-id lookup. Used when the caller passes `genome_id` to override routing."""
+
     if genome_id is not None:
         doc = await db[COLLECTION_GENOMES].find_one({"_id": genome_id})
         if doc is None:
@@ -190,6 +203,33 @@ async def _pick_genome(db, genome_id: Optional[str]) -> dict[str, Any]:
     if doc is None:
         raise HTTPException(status_code=503, detail="no_alive_genomes")
     return doc
+
+
+_EMPTY_ROUTING: dict[str, Any] = {
+    "bucket_key": None,
+    "cosine": None,
+    "nash_strategy_id": None,
+    "sampled_defender_id": None,
+}
+
+
+async def _select_defender(
+    db, req: "EvaluateRequest"
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Pick the genome to evaluate against, plus a routing-telemetry dict.
+
+    - If caller pinned `genome_id`: respect it; routing fields are all-null.
+    - Otherwise: delegate to `route_query` (Nash + bucket cosine), which
+      always returns a routing dict and a genome (or None on empty population).
+    """
+
+    if req.genome_id is not None:
+        return await _pick_genome(db, req.genome_id), dict(_EMPTY_ROUTING)
+
+    routing, genome = await route_query(db, req.text)
+    if genome is None:
+        raise HTTPException(status_code=503, detail="no_alive_genomes")
+    return genome, routing
 
 
 async def _upsert_query(db, text: str) -> dict[str, Any]:
@@ -242,7 +282,7 @@ async def health():
 @app.post("/evaluate", response_model=EvaluateResponse)
 async def evaluate(req: EvaluateRequest):
     db = await get_db()
-    genome = await _pick_genome(db, req.genome_id)
+    genome, routing = await _select_defender(db, req)
     query = await _upsert_query(db, req.text)
 
     run_id = str(uuid.uuid4())
@@ -266,6 +306,7 @@ async def evaluate(req: EvaluateRequest):
             ],
             rationale="Demo-mode fallback: canned response with high-fitness scoring.",
             timestamp=_now_iso(),
+            routing=RoutingInfo(**routing),
         )
 
     try:
@@ -339,6 +380,7 @@ async def evaluate(req: EvaluateRequest):
         ],
         rationale=result.fitness.rationale,
         timestamp=_now_iso(),
+        routing=RoutingInfo(**routing),
     )
 
 
@@ -397,7 +439,7 @@ async def evaluate_stream(req: EvaluateRequest):
     """
 
     db = await get_db()
-    genome = await _pick_genome(db, req.genome_id)
+    genome, routing = await _select_defender(db, req)
     query_doc = await _upsert_query(db, req.text)
 
     run_id = str(uuid.uuid4())
@@ -469,6 +511,7 @@ async def evaluate_stream(req: EvaluateRequest):
                     },
                     "rationale": "Answer is well-grounded in retrieved context, cites specific MongoDB and Voyage primitives accurately. Coverage of edge cases is good. Slight reduction in groundedness for inferences not directly stated in chunks.",
                     "timestamp": _now_iso(),
+                    "routing": routing,
                 })}
             except Exception as exc:
                 log.exception("demo stream failed")
@@ -612,6 +655,7 @@ async def evaluate_stream(req: EvaluateRequest):
                 },
                 "rationale": judge_scores.rationale,
                 "timestamp": _now_iso(),
+                "routing": routing,
             })}
         except Exception as exc:
             log.exception("evaluate-stream failed")

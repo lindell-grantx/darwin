@@ -28,7 +28,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import random
 import signal
 import sys
 from datetime import datetime, timezone
@@ -42,18 +41,12 @@ sys.path.insert(0, str(ROOT / "src"))
 from darwin.lib.secrets import resolve_gcp_secret  # noqa: E402
 
 from darwin.agents.runner import evaluate as agents_evaluate  # noqa: E402
-from darwin.api.routing import cosine_similarity, route_query_to_bucket  # noqa: E402
+from darwin.api.inference_routing import route_query  # noqa: E402
 from darwin.db.client import close_client, get_db  # noqa: E402
 from darwin.db.schemas import (  # noqa: E402
-    COLLECTION_GENOMES,
-    COLLECTION_NASH_STRATEGIES,
     COLLECTION_QUERIES,
     COLLECTION_QUERY_RUNS,
-    COLLECTION_QUERY_TYPE_BUCKETS,
-    NashStrategy,
-    QueryTypeBucket,
 )
-from darwin.retrieval.embedder import embed_batch  # noqa: E402
 
 
 log = logging.getLogger("query_worker")
@@ -91,118 +84,6 @@ async def _claim(db, run_id: str) -> dict[str, Any] | None:
         {"$set": {"status": "running", "started_at": _now()}},
         return_document=True,
     )
-
-
-async def _pick_target_genome(db) -> dict[str, Any] | None:
-    """Highest composite fitness alive/champion genome (v1 fallback path)."""
-
-    return await db[COLLECTION_GENOMES].find_one(
-        {"status": {"$in": ["alive", "champion"]}},
-        sort=[("fitness.composite", -1)],
-    )
-
-
-async def _load_buckets(db) -> list[QueryTypeBucket]:
-    """Load all QueryTypeBucket docs as validated models. Empty list if none seeded."""
-
-    buckets: list[QueryTypeBucket] = []
-    async for doc in db[COLLECTION_QUERY_TYPE_BUCKETS].find({}):
-        try:
-            buckets.append(QueryTypeBucket.model_validate(doc))
-        except Exception as exc:
-            log.warning("skipping malformed query_type_bucket %s: %s", doc.get("_id"), exc)
-    return buckets
-
-
-async def _load_latest_nash(db) -> tuple[NashStrategy | None, dict[str, Any] | None]:
-    """Most recent NashStrategy snapshot. Returns (model, raw_doc) or (None, None)."""
-
-    raw = await db[COLLECTION_NASH_STRATEGIES].find_one(sort=[("created_at", -1)])
-    if raw is None:
-        return None, None
-    try:
-        return NashStrategy.model_validate(raw), raw
-    except Exception as exc:
-        log.warning("latest nash_strategy malformed (%s); ignoring", exc)
-        return None, None
-
-
-async def _route_query(
-    db, text: str
-) -> tuple[dict[str, Any], dict[str, Any] | None]:
-    """Pick the defender genome for this query and build the routing telemetry.
-
-    Returns (routing_doc, defender_genome). The routing_doc is always shaped
-    like the schema described in Task 13 (with nulls where the inputs aren't
-    available); the defender_genome is None only when no usable genome exists
-    at all (caller must surface that as a failure).
-
-    Fallback ladder:
-      - If buckets seeded: embed the query, pick best-cosine bucket.
-      - If a NashStrategy exists: sample defender id by weight; look up the
-        genome doc. If lookup fails, fall back to highest-fitness alive.
-      - If no Nash strategy: log a warning and use the v1 highest-fitness path.
-    """
-
-    routing: dict[str, Any] = {
-        "bucket_key": None,
-        "cosine": None,
-        "nash_strategy_id": None,
-        "sampled_defender_id": None,
-    }
-
-    # --- Query-axis routing: find the matching query-type bucket ---
-    buckets = await _load_buckets(db)
-    query_emb: list[float] | None = None
-    chosen_bucket: QueryTypeBucket | None = None
-    if buckets:
-        try:
-            embeddings = await embed_batch([text], "voyage-4")
-            query_emb = embeddings[0] if embeddings else None
-        except Exception as exc:
-            log.warning("query embedding failed (%s); skipping bucket routing", exc)
-            query_emb = None
-        if query_emb is not None:
-            try:
-                chosen_bucket = route_query_to_bucket(query_emb, buckets)
-                routing["bucket_key"] = list(chosen_bucket.bucket_key)
-                routing["cosine"] = cosine_similarity(query_emb, chosen_bucket.embedding)
-            except Exception as exc:
-                log.warning("bucket routing failed (%s); proceeding without bucket", exc)
-                chosen_bucket = None
-    else:
-        log.info("no query_type_buckets seeded; bucket routing skipped")
-
-    # --- Defender-axis routing: sample from the latest Nash strategy ---
-    strategy, strategy_doc = await _load_latest_nash(db)
-    defender: dict[str, Any] | None = None
-    if strategy is not None and strategy.weights:
-        defender_ids = list(strategy.weights.keys())
-        weights = [strategy.weights[d] for d in defender_ids]
-        try:
-            sampled = random.choices(defender_ids, weights=weights, k=1)[0]
-        except Exception as exc:
-            # random.choices raises if all weights are zero or weights/ids mismatch.
-            log.warning("nash sampling failed (%s); falling back to highest-fitness", exc)
-            sampled = None
-        if sampled is not None:
-            routing["nash_strategy_id"] = (
-                strategy_doc.get("_id") if strategy_doc is not None else None
-            )
-            routing["sampled_defender_id"] = sampled
-            defender = await db[COLLECTION_GENOMES].find_one({"_id": sampled})
-            if defender is None:
-                log.warning(
-                    "sampled defender %s not found in genomes; falling back to highest-fitness",
-                    sampled,
-                )
-    else:
-        log.warning("no nash_strategy found (genesis state); using v1 highest-fitness defender")
-
-    if defender is None:
-        defender = await _pick_target_genome(db)
-
-    return routing, defender
 
 
 async def _upsert_query(db, text: str) -> dict[str, Any]:
@@ -251,7 +132,7 @@ async def _process(db, run_doc: dict[str, Any]) -> None:
         return
 
     try:
-        routing, genome = await _route_query(db, text)
+        routing, genome = await route_query(db, text)
         if genome is None:
             raise RuntimeError("no alive genomes available")
         query = await _upsert_query(db, text)
