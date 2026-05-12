@@ -241,6 +241,11 @@ class FitnessEvaluation(_Base):
     eval_split: Optional[EvalSplit] = None
     judge_critique: Optional[str] = None
     timestamp: datetime = Field(default_factory=_now)
+    attacker_id: Optional[str] = Field(
+        default=None,
+        description="v2: optional attacker the defender was evaluated against. "
+                    "None for clean (no-attacker) evaluations.",
+    )
 
 
 class Champion(_Base):
