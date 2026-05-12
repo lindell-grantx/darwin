@@ -1,0 +1,18 @@
+[Unit]
+Description=Darwin v2 supervisor (run_all.py)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lcume
+WorkingDirectory=/home/lcume/darwin
+EnvironmentFile=/etc/darwin.env
+ExecStart=/home/lcume/darwin/.venv/bin/python /home/lcume/darwin/scripts/run_all.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/var/log/darwin/supervisor.log
+StandardError=append:/var/log/darwin/supervisor.log
+
+[Install]
+WantedBy=multi-user.target
