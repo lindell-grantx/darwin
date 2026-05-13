@@ -9,12 +9,14 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from darwin.db.schemas import (
     COLLECTION_CHAMPIONS,
+    COLLECTION_FITNESS_EVALUATIONS,
     COLLECTION_GENOMES,
     Champion,
     Genome,
 )
 from darwin.genome.crossover import uniform_crossover
 from darwin.genome.mutate import mutate
+from darwin.genome.reflective import reflect_and_mutate
 
 
 __all__ = [
@@ -22,6 +24,37 @@ __all__ = [
     "promote_to_champion",
     "retire_genomes",
 ]
+
+
+async def _reflective_or_mechanical(
+    child: Genome,
+    parents: list[Genome],
+    db: AsyncIOMotorDatabase,
+    *,
+    mutation_rate: float,
+    rng: random.Random,
+) -> Genome:
+    """Apply reflective mutation if a parent has trace data; else fall back to mechanical."""
+    primary_parent = max(parents, key=lambda g: g.fitness.composite)
+
+    # Find the WORST clean (no-attacker) eval for this parent — that's the most
+    # informative trace to reflect on (where the genome failed).
+    trace_doc = await db[COLLECTION_FITNESS_EVALUATIONS].find_one(
+        {"genome_id": primary_parent.id, "attacker_id": None},
+        sort=[("composite_fitness", 1)],
+    )
+    if not trace_doc:
+        return mutate(child, mutation_rate, rng=rng)
+
+    trace = {
+        "answer": trace_doc.get("generated_answer", ""),
+        "chunks": (trace_doc.get("chunks") or [])[:3],  # top 3 to keep prompt short
+    }
+    judge = dict(trace_doc.get("components") or {})
+    judge["rationale"] = trace_doc.get("rationale", "")
+
+    mutated, _meta = await reflect_and_mutate(child, trace, judge, rng=rng)
+    return mutated
 
 
 async def birth_offspring(
@@ -32,17 +65,16 @@ async def birth_offspring(
     *,
     mutation_rate: float,
     rng: Optional[random.Random] = None,
+    use_reflective: bool = True,
 ) -> list[Genome]:
     """Produce `n` offspring by repeated crossover+mutate from the parent pool.
 
     For each child:
-    1. Pick two distinct parents at random (with replacement across iterations).
-    2. `child = uniform_crossover(p1, p2, generation=generation)` (genome.crossover).
-    3. `child = mutate(child, mutation_rate)` (genome.mutate).
-    4. Insert into `genomes` collection.
-
-    Returns the inserted Genome list (with assigned ids). Uses
-    `db['genomes'].insert_many` for the bulk write.
+    1. Pick two distinct parents at random.
+    2. child = uniform_crossover(p1, p2, generation=generation)
+    3. If use_reflective and a trace exists: child = reflect_and_mutate(child, trace, judge)
+       Else: child = mutate(child, mutation_rate)
+    4. Insert into `genomes` collection via insert_many.
     """
 
     if n <= 0:
@@ -56,7 +88,12 @@ async def birth_offspring(
     for _ in range(n):
         p1, p2 = rng.sample(parents, 2)
         child = uniform_crossover(p1, p2, generation=generation, rng=rng)
-        child = mutate(child, mutation_rate, rng=rng)
+        if use_reflective:
+            child = await _reflective_or_mechanical(
+                child, parents=[p1, p2], db=db, mutation_rate=mutation_rate, rng=rng,
+            )
+        else:
+            child = mutate(child, mutation_rate, rng=rng)
         children.append(child)
 
     docs = [c.model_dump(by_alias=True) for c in children]
