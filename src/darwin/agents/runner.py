@@ -29,6 +29,8 @@ class AgentRunResult:
     chunks: list[RetrievedChunk]
     candidates: list[CandidateAnswer]
     fitness: JudgeScores
+    tool_call_count: int = 0
+    process_latency_ms: int | None = None
 
     def to_document(self) -> dict[str, Any]:
         return {
@@ -103,17 +105,21 @@ async def run_genome(
     attacker: "Attacker | None" = None,
 ) -> AgentRunResult:
     started = time.perf_counter()
+    _eval_start = time.monotonic()
+    _tool_call_count = 0
     genome_id = str(genome.get("_id") or genome.get("id") or "unknown-genome")
     retrieval_genes = dict(genome.get("retrieval_genes", {}))
     coordination_genes = dict(genome.get("coordination_genes", {}))
 
     chunks = await retrieve(query, retrieval_genes)
+    _tool_call_count += 1
     attacked_query, attacked_chunks = _apply_attacker(
         query=query, chunks=list(chunks), attacker=attacker
     )
     answer, candidates = await coordinate(
         attacked_query, attacked_chunks, coordination_genes, genome=genome
     )
+    _tool_call_count += 1
     latency_ms = (time.perf_counter() - started) * 1000
     # Judge always sees the ORIGINAL query so the score reflects the defender's
     # ability to answer the user's true intent under the adversary's pressure.
@@ -125,6 +131,8 @@ async def run_genome(
         latency_ms=latency_ms,
         cost_usd=0.0,
     )
+    _tool_call_count += 1
+    _process_latency_ms = int((time.monotonic() - _eval_start) * 1000)
 
     result = AgentRunResult(
         run_id=run_id or str(uuid.uuid4()),
@@ -133,6 +141,8 @@ async def run_genome(
         chunks=attacked_chunks,
         candidates=candidates,
         fitness=fitness,
+        tool_call_count=_tool_call_count,
+        process_latency_ms=_process_latency_ms,
     )
     if persist:
         await persist_run_result(result, eval_split=eval_split)
@@ -174,6 +184,11 @@ async def evaluate(
             "composite_fitness": result.fitness.composite,
             "timestamp": datetime.now(timezone.utc),
             "attacker_id": attacker.id if attacker is not None else None,
+            "tool_call_count": result.tool_call_count,
+            "step_coherence": float(result.fitness.groundedness)
+            if result.fitness is not None
+            else None,
+            "process_latency_ms": result.process_latency_ms,
         }
     )
     tag_eval_document(doc, eval_split)
