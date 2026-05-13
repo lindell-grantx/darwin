@@ -330,6 +330,20 @@ class FitnessEvaluation(_Base):
         description="v2: optional attacker the defender was evaluated against. "
                     "None for clean (no-attacker) evaluations.",
     )
+    tool_call_count: int = Field(
+        default=0, ge=0,
+        description="Pass 1: process-reward signal — number of tool calls the defender made.",
+    )
+    step_coherence: float | None = Field(
+        default=None, ge=0.0, le=1.0,
+        description="Pass 1: process-reward signal — coherence of multi-step reasoning trace.",
+    )
+    process_latency_ms: int | None = Field(
+        default=None, ge=0,
+        description="Pass 1: process-reward signal — wall-clock latency of the runner's "
+                    "evaluation pass in ms. Distinct from components.latency_ms which "
+                    "captures the latency value passed to the judge for scoring.",
+    )
 
 
 class Champion(_Base):
