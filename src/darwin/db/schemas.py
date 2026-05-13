@@ -163,6 +163,46 @@ class CoordinationGenes(_Base):
         description="v2: per-cycle decay rate for blackboard contributions; "
                     "0.0=no decay, 1.0=full decay each cycle. Mandatory per "
                     "stigmergy literature (Pressure-Field, ICLR 2026).")
+    pressure_response_sensitivity: float = Field(
+        default=0.5, ge=0.0, le=1.0,
+        description="Pass 1: how strongly local quality signals override prior intent. "
+                    "Pressure-Field stigmergy parameter. Pairs with signal_decay_rate.",
+    )
+    sycophancy_spectrum: float = Field(
+        default=0.0, ge=-1.0, le=1.0,
+        description="Pass 1: -1.0 = peacemaker (defer to peer agreement); +1.0 = troublemaker "
+                    "(resist peer pressure). Counters deference cascades.",
+    )
+    confidence_calibration: float = Field(
+        default=0.5, ge=0.0, le=1.0,
+        description="Pass 1: gates whether peer agreement actually moves agent's posterior.",
+    )
+    bid_aggressiveness: float = Field(
+        default=0.5, ge=0.0, le=1.0,
+        description="Pass 1: how aggressively the agent bids for the right to speak (DALA).",
+    )
+    value_density_estimator: float = Field(
+        default=0.5, ge=0.0, le=1.0,
+        description="Pass 1: weight on predicted message value density when bidding.",
+    )
+    capability_embedding: list[float] = Field(
+        default_factory=lambda: [0.0] * 32,
+        description="Pass 1: 32-dim learned vector of agent's claimed competencies. "
+                    "Replaces discrete specialization affinity. IoA two-stage discovery pattern.",
+    )
+    marginal_contribution_threshold: float = Field(
+        default=0.0, ge=0.0, le=1.0,
+        description="Pass 1: voluntary self-abstention threshold. Counters Coordination Tax.",
+    )
+    leader_candidacy: float = Field(
+        default=0.5, ge=0.0, le=1.0,
+        description="Pass 1: willingness to nominate self for elected coordinator role.",
+    )
+    connection_affinity: list[float] = Field(
+        default_factory=lambda: [],
+        description="Pass 1: preference weights over peer agents (mutates based on past "
+                    "interaction quality). AgentNet-style topology evolution. Empty at genesis.",
+    )
 
 
 class GenerationGenes(_Base):
