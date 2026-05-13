@@ -381,3 +381,36 @@ Cron runs `scripts/recompute_nash.py` every 15 min to refresh the `NashStrategy`
 
 The supervisor (`scripts/run_all.py`) runs as a systemd service on a GCE e2-medium VM (`darwin-supervisor`, `us-central1-a`). Provisioning script: `infra/gce/setup.sh`. Service unit: `infra/systemd/darwin-supervisor.service`. Operational runbook: `infra/README.md`.
 
+
+---
+
+## Pass 1 (Phase B deepening)
+
+Pass 1 adds 17 new gene fields (8 retrieval + 9 coordination), MADE rubric (vector-valued judge with 5 predicates), GEPA reflective mutation (LLM reads execution trace, proposes single-gene edit), DGM weighted parent sampling (replaces tournament), ShinkaEvolve novelty rejection (cosine on encoded gene vector), island model (3 islands, migration every 5 gens), per-query-class Pareto fronts (broadens MVP's per-difficulty), and two-tier model strategy (Opus on plateau or every 10 gens).
+
+### New genes
+
+**Retrieval (8):** retrieval_mode_router, hierarchical_traversal_strategy, graph_construction_mode + graph_eagerness, embedding_compression_dim + embedding_quantization, retrieval_tool_set, context_utilization_ratio.
+
+**Coordination (8 conceptual / 9 fields):** pressure_response_sensitivity, sycophancy_spectrum, confidence_calibration, bid_aggressiveness + value_density_estimator, capability_embedding (32-dim vector), marginal_contribution_threshold, leader_candidacy + connection_affinity (vector).
+
+### Process-reward fitness signal
+
+FitnessEvaluation gains tool_call_count, step_coherence, process_latency_ms (renamed from latency_ms to disambiguate from components.latency_ms).
+
+### Selection + diversity
+
+- DGM weighted parent sampling: w_i = sigmoid(λ × (fitness_i − α_0)) × 1/(1 + n_children_i)
+- Novelty rejection: gene-vector cosine ≥ 0.95 → re-mutate aggressively at rate 0.5
+- Island model: round-robin partition into 3 islands, best-of-island migrates every 5 generations (with island_id persisted to Mongo)
+- Per-query-class Pareto: top-3 defenders per (mongodb,vector-search), (voyage,embeddings,rag), etc.
+
+### Two-tier model
+
+Reflective mutation defaults to Vertex Haiku. Opus (claude-opus-4-7) is triggered every 10 generations OR when fitness plateau detected (stddev of best-fitness over last 5 gens < 0.02 with non-zero variance). When use_opus=True, ALL reflective mutations in that generation use Opus instead of Haiku. Always via AnthropicVertex per project rule.
+
+### Verification
+
+`scripts/pass1_smoke.py` runs 30 generations and asserts:
+- Cell coverage > 50%
+- MADE max pairwise predicate correlation < 0.95

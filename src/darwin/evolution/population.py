@@ -26,6 +26,9 @@ __all__ = [
 ]
 
 
+OPUS_MODEL_ID = "claude-opus-4-7"
+
+
 async def _reflective_or_mechanical(
     child: Genome,
     parents: list[Genome],
@@ -33,8 +36,13 @@ async def _reflective_or_mechanical(
     *,
     mutation_rate: float,
     rng: random.Random,
+    use_opus: bool = False,
 ) -> Genome:
-    """Apply reflective mutation if a parent has trace data; else fall back to mechanical."""
+    """Apply reflective mutation if a parent has trace data; else fall back to mechanical.
+
+    `use_opus=True` routes the reflective LLM call to Opus 4.7 (plateau / cadence
+    trigger from the conductor); otherwise the Vertex default is used.
+    """
     primary_parent = max(parents, key=lambda g: g.fitness.composite)
 
     # Find the WORST clean (no-attacker) eval for this parent — that's the most
@@ -53,7 +61,8 @@ async def _reflective_or_mechanical(
     judge = dict(trace_doc.get("components") or {})
     judge["rationale"] = trace_doc.get("rationale", "")
 
-    mutated, _meta = await reflect_and_mutate(child, trace, judge, rng=rng)
+    model = OPUS_MODEL_ID if use_opus else None
+    mutated, _meta = await reflect_and_mutate(child, trace, judge, rng=rng, model=model)
     return mutated
 
 
@@ -66,6 +75,7 @@ async def birth_offspring(
     mutation_rate: float,
     rng: Optional[random.Random] = None,
     use_reflective: bool = True,
+    use_opus: bool = False,
 ) -> list[Genome]:
     """Produce `n` offspring by repeated crossover+mutate from the parent pool.
 
@@ -75,6 +85,8 @@ async def birth_offspring(
     3. If use_reflective and a trace exists: child = reflect_and_mutate(child, trace, judge)
        Else: child = mutate(child, mutation_rate)
     4. Insert into `genomes` collection via insert_many.
+
+    `use_opus=True` upgrades the reflective LLM to Opus for this generation.
     """
 
     if n <= 0:
@@ -90,7 +102,12 @@ async def birth_offspring(
         child = uniform_crossover(p1, p2, generation=generation, rng=rng)
         if use_reflective:
             child = await _reflective_or_mechanical(
-                child, parents=[p1, p2], db=db, mutation_rate=mutation_rate, rng=rng,
+                child,
+                parents=[p1, p2],
+                db=db,
+                mutation_rate=mutation_rate,
+                rng=rng,
+                use_opus=use_opus,
             )
         else:
             child = mutate(child, mutation_rate, rng=rng)

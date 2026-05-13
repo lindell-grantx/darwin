@@ -141,14 +141,20 @@ async def reflect_and_mutate(
     *,
     rng: random.Random,
     fallback_rate: float = 0.1,
+    model: str | None = None,
 ) -> tuple[Genome, dict[str, Any]]:
     """Returns (mutated_genome, mutation_metadata).
 
     Falls back to mechanical mutation on any LLM/parse/apply failure
     so evolution doesn't stall.
+
+    `model` overrides the Vertex model for this call (e.g., "claude-opus-4-7"
+    on plateau triggers); None uses the configured default.
     """
     from darwin.llm.vertex import vertex_complete, is_vertex_configured
     from darwin.genome.mutate import mutate
+
+    model_label = model if model is not None else "haiku-default"
 
     if not is_vertex_configured():
         return mutate(parent, fallback_rate, rng=rng), {
@@ -165,6 +171,7 @@ async def reflect_and_mutate(
             user=prompt,
             max_tokens=512,
             thinking=False,
+            model=model,
         )
     except Exception as exc:
         log.warning("reflective mutation Vertex call failed: %s", exc)
@@ -181,7 +188,7 @@ async def reflect_and_mutate(
             "mutation_type": "mechanical_fallback",
             "target_gene": None,
             "rationale": "parse_failed",
-            "model_used": "haiku-default",
+            "model_used": model_label,
         }
 
     mutated = apply_edit(parent, edit)
@@ -189,6 +196,6 @@ async def reflect_and_mutate(
         "mutation_type": "reflective",
         "target_gene": edit["gene_path"],
         "rationale": edit.get("rationale", ""),
-        "model_used": "haiku-default",
+        "model_used": model_label,
         "edit_diff": {edit["gene_path"]: edit["new_value"]},
     }

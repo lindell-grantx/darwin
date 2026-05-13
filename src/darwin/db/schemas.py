@@ -237,6 +237,11 @@ class Genome(_Base):
     fitness: FitnessSummary = Field(default_factory=FitnessSummary)
     created_at: datetime = Field(default_factory=_now)
     notes: Optional[str] = None
+    island_id: int = Field(
+        default=0, ge=0,
+        description="Pass 1: island index (0..N_ISLANDS-1) for spatial population structure. "
+                    "Migration moves best-of-island across islands every K generations.",
+    )
 
 
 class Generation(_Base):
