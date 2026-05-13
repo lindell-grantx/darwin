@@ -5,8 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
+
+from darwin.fitness.made_rubric import decompose_judge_output
 
 
 DEFAULT_WEIGHTS = {
@@ -28,6 +30,7 @@ class JudgeScores:
     cost_usd: float
     composite: float
     rationale: str
+    predicates: dict[str, float] = field(default_factory=dict)  # MADE rubric vector
 
     def as_components(self) -> dict[str, float]:
         return {
@@ -93,6 +96,7 @@ async def evaluate_answer(
         latency_ms,
         cost_usd,
     )
+    predicates = decompose_judge_output(result)
     return JudgeScores(
         relevance=result["relevance"],
         accuracy=result["accuracy"],
@@ -102,6 +106,7 @@ async def evaluate_answer(
         cost_usd=cost_usd,
         composite=composite,
         rationale=result["rationale"],
+        predicates=predicates,
     )
 
 
