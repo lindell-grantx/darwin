@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from darwin.db.schemas import (
@@ -51,6 +52,19 @@ _NUMERIC_RANGES: dict[str, tuple[float, float]] = {
     "generation_genes.max_tokens": (128.0, 2048.0),
 }
 
+_NUMERIC_RANGES.update({
+    "retrieval_genes.graph_eagerness": (0.0, 1.0),
+    "retrieval_genes.context_utilization_ratio": (0.0, 1.0),
+    "retrieval_genes.embedding_compression_dim": (40.0, 2560.0),
+    "coordination_genes.pressure_response_sensitivity": (0.0, 1.0),
+    "coordination_genes.sycophancy_spectrum": (-1.0, 1.0),
+    "coordination_genes.confidence_calibration": (0.0, 1.0),
+    "coordination_genes.bid_aggressiveness": (0.0, 1.0),
+    "coordination_genes.value_density_estimator": (0.0, 1.0),
+    "coordination_genes.marginal_contribution_threshold": (0.0, 1.0),
+    "coordination_genes.leader_candidacy": (0.0, 1.0),
+})
+
 
 # chunk_size is an ordered categorical: {128, 256, 512, 1024}. Treat it as
 # numeric on the index axis so neighbouring sizes are "closer" than extremes.
@@ -95,13 +109,29 @@ def _field_distance(path: str, val_a: Any, val_b: Any) -> float:
         idx_b = _CHUNK_SIZES.index(val_b)
         return abs(idx_a - idx_b) / (len(_CHUNK_SIZES) - 1)
 
-    if path == "retrieval_genes.source_routing":
+    if path in ("retrieval_genes.source_routing", "retrieval_genes.retrieval_tool_set"):
         set_a = set(val_a)
         set_b = set(val_b)
         union = set_a | set_b
         if not union:
             return 0.0
         return 1.0 - (len(set_a & set_b) / len(union))
+
+    if path == "coordination_genes.capability_embedding":
+        if not val_a or not val_b or len(val_a) != len(val_b):
+            return 1.0
+        dot = sum(x * y for x, y in zip(val_a, val_b))
+        norm_a = math.sqrt(sum(x * x for x in val_a))
+        norm_b = math.sqrt(sum(y * y for y in val_b))
+        if norm_a == 0.0 or norm_b == 0.0:
+            return 0.0
+        cos = dot / (norm_a * norm_b)
+        return (1.0 - cos) / 2.0  # [-1,1] cosine -> [0,1] distance
+
+    if path == "coordination_genes.connection_affinity":
+        if not val_a and not val_b:
+            return 0.0
+        return abs(len(val_a) - len(val_b)) / max(1, max(len(val_a), len(val_b)))
 
     if path in _NUMERIC_RANGES:
         lo, hi = _NUMERIC_RANGES[path]
