@@ -44,6 +44,14 @@ from darwin.evolution.selection import (
     elite_select,
     tournament_select,
 )
+from darwin.evolution.dgm_select import (
+    count_children_per_genome,
+    dgm_weighted_select,
+)
+from darwin.evolution.novelty import novelty_reject
+from darwin.evolution.islands import migrate, should_migrate
+from darwin.evolution.plateau import should_use_opus
+from darwin.genome.mutate import mutate
 from darwin.genome.types import gene_distance
 
 
@@ -132,7 +140,22 @@ async def evolve_generation(
     elites = elite_select(genomes, ELITE_K)
     elite_ids = {e.id for e in elites}
 
-    parents = tournament_select(genomes, N_PARENTS, rng=rng)
+    n_children_map = await count_children_per_genome(db)
+    parents = dgm_weighted_select(
+        genomes,
+        N_PARENTS,
+        n_children_map=n_children_map,
+        rng=rng,
+    )
+
+    fitness_history = await _load_fitness_history(db, last_n_gens=10)
+    use_opus = should_use_opus(generation, fitness_history)
+    if use_opus:
+        log.info(
+            "plateau or cadence trigger — Opus mutation pass should run for gen %d "
+            "(TODO: plumb into reflect_and_mutate)",
+            generation + 1,
+        )
 
     offspring_n = max(0, POP_SIZE - len(elites))
     offspring = await birth_offspring(
@@ -143,6 +166,19 @@ async def evolve_generation(
         mutation_rate=MUTATION_RATE,
         rng=rng,
     )
+
+    # Apply novelty rejection — re-mutate any child too similar to recent archive
+    recent_archive = (offspring + elites)[-50:]
+    filtered_offspring = []
+    for child in offspring:
+        if novelty_reject(child, recent_archive, threshold=0.95):
+            child = mutate(child, rate=0.5, rng=rng)
+        filtered_offspring.append(child)
+    offspring = filtered_offspring
+
+    # Run migration on schedule
+    if should_migrate(generation + 1):
+        migrate(offspring + list(elites), rng=rng)
 
     if elite_ids:
         await db[COLLECTION_GENOMES].update_many(
@@ -320,3 +356,16 @@ async def watch_evaluations(
         await _watch_change_stream(db, rng)
     except Exception as exc:
         log.exception("change-stream watcher failed, exiting: %s", exc)
+
+
+async def _load_fitness_history(db, *, last_n_gens: int = 10) -> list[float]:
+    """Load best-fitness-per-generation for the last N generations."""
+    cursor = (
+        db[COLLECTION_GENERATIONS]
+        .find({}, projection={"generation": 1, "best_fitness": 1, "_id": 0})
+        .sort("generation", -1)
+        .limit(last_n_gens)
+    )
+    docs = await cursor.to_list(length=last_n_gens)
+    docs.reverse()
+    return [float(d.get("best_fitness", 0.0)) for d in docs]
