@@ -162,6 +162,7 @@ async def vertex_complete(
     max_tokens: int = 2048,
     thinking: bool = True,
     thinking_budget: Optional[int] = None,
+    model: Optional[str] = None,
 ) -> str:
     """Async wrapper for a single-turn Claude completion via Vertex.
 
@@ -169,6 +170,8 @@ async def vertex_complete(
     pass `thinking=False` to disable. When thinking is enabled, the API
     requires temperature=1, which we set automatically and silently — callers
     don't need to think about it.
+
+    If `model` is provided, overrides DARWIN_CLAUDE_MODEL / default for this call.
     """
 
     if not is_vertex_configured():
@@ -178,7 +181,7 @@ async def vertex_complete(
         )
 
     request: dict[str, Any] = {
-        "model": _model(),
+        "model": model or _model(),
         "max_tokens": max_tokens,
         "messages": [{"role": "user", "content": user}],
     }

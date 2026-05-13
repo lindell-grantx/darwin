@@ -152,8 +152,7 @@ async def evolve_generation(
     use_opus = should_use_opus(generation, fitness_history)
     if use_opus:
         log.info(
-            "plateau or cadence trigger — Opus mutation pass should run for gen %d "
-            "(TODO: plumb into reflect_and_mutate)",
+            "Opus mutation pass active for gen %d (plateau or cadence trigger)",
             generation + 1,
         )
 
@@ -165,6 +164,8 @@ async def evolve_generation(
         generation + 1,
         mutation_rate=MUTATION_RATE,
         rng=rng,
+        use_reflective=True,
+        use_opus=use_opus,
     )
 
     # Apply novelty rejection — re-mutate any child too similar to recent archive
@@ -176,9 +177,17 @@ async def evolve_generation(
         filtered_offspring.append(child)
     offspring = filtered_offspring
 
-    # Run migration on schedule
+    # Run migration on schedule, then persist island_id changes back to Mongo —
+    # without this write, migrate() mutates in-memory island_id values that
+    # the next generation never sees.
     if should_migrate(generation + 1):
-        migrate(offspring + list(elites), rng=rng)
+        migration_pool = offspring + list(elites)
+        migrate(migration_pool, rng=rng)
+        for g in migration_pool:
+            await db[COLLECTION_GENOMES].update_one(
+                {"_id": g.id},
+                {"$set": {"island_id": g.island_id}},
+            )
 
     if elite_ids:
         await db[COLLECTION_GENOMES].update_many(
