@@ -38,6 +38,15 @@ _FLOAT_BOUNDS: dict[str, tuple[float, float]] = {
     "temperature": (0.0, 1.5),
     "search_depth_policy": (0.0, 1.0),
     "signal_decay_rate": (0.0, 1.0),
+    "graph_eagerness": (0.0, 1.0),
+    "context_utilization_ratio": (0.0, 1.0),
+    "pressure_response_sensitivity": (0.0, 1.0),
+    "sycophancy_spectrum": (-1.0, 1.0),
+    "confidence_calibration": (0.0, 1.0),
+    "bid_aggressiveness": (0.0, 1.0),
+    "value_density_estimator": (0.0, 1.0),
+    "marginal_contribution_threshold": (0.0, 1.0),
+    "leader_candidacy": (0.0, 1.0),
 }
 
 _INT_BOUNDS: dict[str, tuple[int, int]] = {
@@ -46,6 +55,13 @@ _INT_BOUNDS: dict[str, tuple[int, int]] = {
     "debate_rounds": (1, 3),
     "max_tokens": (64, 4_096),
 }
+
+_MODE_OPTS: tuple[str, ...] = ("skip", "single_shot", "iterative", "agentic")
+_HIER_OPTS: tuple[str, ...] = ("single_level", "dual_level", "dfs_pruning", "lca_stopping")
+_GRAPH_OPTS: tuple[str, ...] = ("none", "entity_relation", "topic_summary", "rule_graph", "temporal")
+_QUANT_OPTS: tuple[str, ...] = ("float32", "int8", "binary")
+_COMPRESSION_DIMS: tuple[int, ...] = (40, 80, 160, 320, 640, 1280, 2560)
+_RETRIEVAL_TOOLS: tuple[str, ...] = ("keyword_search", "semantic_search", "chunk_read")
 
 
 def _maybe(rng: random.Random, rate: float) -> bool:
@@ -78,6 +94,26 @@ def _swap_categorical(value, options: tuple, rng: random.Random):
     if not alternatives:
         return value
     return rng.choice(alternatives)
+
+
+def _mutate_retrieval_tool_set(current: list[str], rng: random.Random) -> list[str]:
+    present = set(current)
+    absent = [t for t in _RETRIEVAL_TOOLS if t not in present]
+    if absent and present and rng.random() < 0.5:
+        return list(present | {rng.choice(absent)})
+    if len(present) > 1 and rng.random() < 0.5:
+        drop = rng.choice(list(present))
+        return [t for t in current if t != drop]
+    if absent:
+        return list(present | {rng.choice(absent)})
+    return list(current)
+
+
+def _mutate_vector(vec: list[float], lo: float, hi: float, rng: random.Random) -> list[float]:
+    return [
+        max(lo, min(hi, x + rng.gauss(0.0, 0.1)))
+        for x in vec
+    ]
 
 
 def _mutate_source_routing(current: list[str], rng: random.Random) -> list[str]:
@@ -171,6 +207,41 @@ def mutate(
     if not source_routing:
         source_routing = list(r.source_routing) or ["mongodb"]
 
+    retrieval_mode_router = (
+        _swap_categorical(r.retrieval_mode_router, _MODE_OPTS, rng)
+        if _maybe(rng, rate) else r.retrieval_mode_router
+    )
+    hierarchical_traversal_strategy = (
+        _swap_categorical(r.hierarchical_traversal_strategy, _HIER_OPTS, rng)
+        if _maybe(rng, rate) else r.hierarchical_traversal_strategy
+    )
+    graph_construction_mode = (
+        _swap_categorical(r.graph_construction_mode, _GRAPH_OPTS, rng)
+        if _maybe(rng, rate) else r.graph_construction_mode
+    )
+    embedding_compression_dim = (
+        _swap_categorical(r.embedding_compression_dim, _COMPRESSION_DIMS, rng)
+        if _maybe(rng, rate) else r.embedding_compression_dim
+    )
+    embedding_quantization = (
+        _swap_categorical(r.embedding_quantization, _QUANT_OPTS, rng)
+        if _maybe(rng, rate) else r.embedding_quantization
+    )
+    graph_eagerness = (
+        _mutate_float(r.graph_eagerness, *_FLOAT_BOUNDS["graph_eagerness"], rng)
+        if _maybe(rng, rate) else r.graph_eagerness
+    )
+    context_utilization_ratio = (
+        _mutate_float(r.context_utilization_ratio, *_FLOAT_BOUNDS["context_utilization_ratio"], rng)
+        if _maybe(rng, rate) else r.context_utilization_ratio
+    )
+    retrieval_tool_set = (
+        _mutate_retrieval_tool_set(list(r.retrieval_tool_set), rng)
+        if _maybe(rng, rate) else list(r.retrieval_tool_set)
+    )
+    if not retrieval_tool_set:
+        retrieval_tool_set = list(r.retrieval_tool_set) or ["semantic_search"]
+
     new_retrieval = RetrievalGenes(
         embedding_model=embedding_model,
         chunk_size=chunk_size,
@@ -181,6 +252,14 @@ def mutate(
         top_k=top_k,
         source_routing=source_routing,
         search_depth_policy=search_depth_policy,
+        retrieval_mode_router=retrieval_mode_router,
+        hierarchical_traversal_strategy=hierarchical_traversal_strategy,
+        graph_construction_mode=graph_construction_mode,
+        graph_eagerness=graph_eagerness,
+        embedding_compression_dim=embedding_compression_dim,
+        embedding_quantization=embedding_quantization,
+        retrieval_tool_set=retrieval_tool_set,
+        context_utilization_ratio=context_utilization_ratio,
     )
 
     protocol = (
@@ -204,12 +283,55 @@ def mutate(
         if _maybe(rng, rate) else c.debate_rounds
     )
 
+    pressure_response_sensitivity = (
+        _mutate_float(c.pressure_response_sensitivity, *_FLOAT_BOUNDS["pressure_response_sensitivity"], rng)
+        if _maybe(rng, rate) else c.pressure_response_sensitivity
+    )
+    sycophancy_spectrum = (
+        _mutate_float(c.sycophancy_spectrum, *_FLOAT_BOUNDS["sycophancy_spectrum"], rng)
+        if _maybe(rng, rate) else c.sycophancy_spectrum
+    )
+    confidence_calibration = (
+        _mutate_float(c.confidence_calibration, *_FLOAT_BOUNDS["confidence_calibration"], rng)
+        if _maybe(rng, rate) else c.confidence_calibration
+    )
+    bid_aggressiveness = (
+        _mutate_float(c.bid_aggressiveness, *_FLOAT_BOUNDS["bid_aggressiveness"], rng)
+        if _maybe(rng, rate) else c.bid_aggressiveness
+    )
+    value_density_estimator = (
+        _mutate_float(c.value_density_estimator, *_FLOAT_BOUNDS["value_density_estimator"], rng)
+        if _maybe(rng, rate) else c.value_density_estimator
+    )
+    marginal_contribution_threshold = (
+        _mutate_float(c.marginal_contribution_threshold, *_FLOAT_BOUNDS["marginal_contribution_threshold"], rng)
+        if _maybe(rng, rate) else c.marginal_contribution_threshold
+    )
+    leader_candidacy = (
+        _mutate_float(c.leader_candidacy, *_FLOAT_BOUNDS["leader_candidacy"], rng)
+        if _maybe(rng, rate) else c.leader_candidacy
+    )
+    capability_embedding = (
+        _mutate_vector(list(c.capability_embedding), -1.0, 1.0, rng)
+        if _maybe(rng, rate) else list(c.capability_embedding)
+    )
+    connection_affinity = list(c.connection_affinity)  # no mutation at Pass 1; growth is Pass 2
+
     new_coord = CoordinationGenes(
         protocol=protocol,
         consult_threshold=consult_threshold,
         timeout_ms=timeout_ms,
         debate_rounds=debate_rounds,
         signal_decay_rate=signal_decay_rate,
+        pressure_response_sensitivity=pressure_response_sensitivity,
+        sycophancy_spectrum=sycophancy_spectrum,
+        confidence_calibration=confidence_calibration,
+        bid_aggressiveness=bid_aggressiveness,
+        value_density_estimator=value_density_estimator,
+        capability_embedding=capability_embedding,
+        marginal_contribution_threshold=marginal_contribution_threshold,
+        leader_candidacy=leader_candidacy,
+        connection_affinity=connection_affinity,
     )
 
     model = (

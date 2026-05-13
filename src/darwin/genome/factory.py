@@ -43,6 +43,15 @@ def _sample_source_routing(rng: random.Random) -> list[str]:
             return subset
 
 
+def _sample_retrieval_tools(rng: random.Random) -> list[str]:
+    """Non-empty subset of {keyword_search, semantic_search, chunk_read}."""
+    options = ("keyword_search", "semantic_search", "chunk_read")
+    while True:
+        subset = [t for t in options if rng.random() < 0.5]
+        if subset:
+            return subset
+
+
 def random_genome(
     generation: int = 0,
     *,
@@ -90,6 +99,18 @@ def random_genome(
         top_k=rng.randint(3, 20),
         source_routing=_sample_source_routing(rng),
         search_depth_policy=rng.uniform(0.0, 1.0),
+        retrieval_mode_router=rng.choice(("skip", "single_shot", "iterative", "agentic")),
+        hierarchical_traversal_strategy=rng.choice((
+            "single_level", "dual_level", "dfs_pruning", "lca_stopping"
+        )),
+        graph_construction_mode=rng.choice((
+            "none", "entity_relation", "topic_summary", "rule_graph", "temporal"
+        )),
+        graph_eagerness=rng.uniform(0.0, 1.0),
+        embedding_compression_dim=rng.choice((40, 80, 160, 320, 640, 1280, 2560)),
+        embedding_quantization=rng.choice(("float32", "int8", "binary")),
+        retrieval_tool_set=_sample_retrieval_tools(rng),
+        context_utilization_ratio=rng.uniform(0.0, 1.0),
     )
 
     coordination = CoordinationGenes(
@@ -98,6 +119,15 @@ def random_genome(
         timeout_ms=rng.randint(500, 5000),
         debate_rounds=rng.randint(1, 3),
         signal_decay_rate=rng.uniform(0.0, 1.0),
+        pressure_response_sensitivity=rng.uniform(0.0, 1.0),
+        sycophancy_spectrum=rng.uniform(-1.0, 1.0),
+        confidence_calibration=rng.uniform(0.0, 1.0),
+        bid_aggressiveness=rng.uniform(0.0, 1.0),
+        value_density_estimator=rng.uniform(0.0, 1.0),
+        capability_embedding=[rng.uniform(-1.0, 1.0) for _ in range(32)],
+        marginal_contribution_threshold=rng.uniform(0.0, 1.0),
+        leader_candidacy=rng.uniform(0.0, 1.0),
+        connection_affinity=[],
     )
 
     generation_genes = GenerationGenes(

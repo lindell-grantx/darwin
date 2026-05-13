@@ -108,6 +108,50 @@ class RetrievalGenes(_Base):
         description="v2: confidence threshold below which the agent triggers "
                     "additional retrieval rounds. 0.0=always re-retrieve, "
                     "1.0=never re-retrieve. AutoSearch lineage (arXiv 2604.17337).")
+    retrieval_mode_router: Literal["skip", "single_shot", "iterative", "agentic"] = Field(
+        default="single_shot",
+        description="Pass 1: how the agent decides retrieval depth — skip / single-shot / "
+                    "iterative refinement / fully agentic loop. AutoSearch + A-RAG lineage.",
+    )
+    hierarchical_traversal_strategy: Literal[
+        "single_level", "dual_level", "dfs_pruning", "lca_stopping"
+    ] = Field(
+        default="single_level",
+        description="Pass 1: hierarchy traversal — single-level / dual-level / DFS-pruning / "
+                    "LCA-stopping. BookRAG / T-Retriever lineage.",
+    )
+    graph_construction_mode: Literal[
+        "none", "entity_relation", "topic_summary", "rule_graph", "temporal"
+    ] = Field(
+        default="none",
+        description="Pass 1: graph index mode. none = vector only. entity_relation = MS GraphRAG. "
+                    "topic_summary = LightRAG. rule_graph = curated. temporal = T-GRAG.",
+    )
+    graph_eagerness: float = Field(
+        default=0.5, ge=0.0, le=1.0,
+        description="Pass 1: 0.0 = lazy (compute graph at query time, LazyGraphRAG). "
+                    "1.0 = eager (full pre-indexing, MS GraphRAG).",
+    )
+    embedding_compression_dim: int = Field(
+        default=1024, ge=40, le=2560,
+        description="Pass 1: Matryoshka knob — output embedding dimension. "
+                    "Common values: 40, 80, 160, 320, 640, 1280, 2560.",
+    )
+    embedding_quantization: Literal["float32", "int8", "binary"] = Field(
+        default="float32",
+        description="Pass 1: quantization for stored embeddings. binary = 32x smaller, "
+                    "~2-5% retrieval quality loss.",
+    )
+    retrieval_tool_set: list[Literal["keyword_search", "semantic_search", "chunk_read"]] = Field(
+        default_factory=lambda: ["semantic_search"],
+        description="Pass 1: A-RAG-style multi-tool interface. Subset of available retrieval "
+                    "tools the agent can choose from per turn.",
+    )
+    context_utilization_ratio: float = Field(
+        default=1.0, ge=0.0, le=1.0,
+        description="Pass 1: fraction of retrieved context to actually pass to LLM. "
+                    "0.0 = use no context (zero-shot). 1.0 = pass everything retrieved.",
+    )
 
 
 class CoordinationGenes(_Base):
@@ -119,6 +163,46 @@ class CoordinationGenes(_Base):
         description="v2: per-cycle decay rate for blackboard contributions; "
                     "0.0=no decay, 1.0=full decay each cycle. Mandatory per "
                     "stigmergy literature (Pressure-Field, ICLR 2026).")
+    pressure_response_sensitivity: float = Field(
+        default=0.5, ge=0.0, le=1.0,
+        description="Pass 1: how strongly local quality signals override prior intent. "
+                    "Pressure-Field stigmergy parameter. Pairs with signal_decay_rate.",
+    )
+    sycophancy_spectrum: float = Field(
+        default=0.0, ge=-1.0, le=1.0,
+        description="Pass 1: -1.0 = peacemaker (defer to peer agreement); +1.0 = troublemaker "
+                    "(resist peer pressure). Counters deference cascades.",
+    )
+    confidence_calibration: float = Field(
+        default=0.5, ge=0.0, le=1.0,
+        description="Pass 1: gates whether peer agreement actually moves agent's posterior.",
+    )
+    bid_aggressiveness: float = Field(
+        default=0.5, ge=0.0, le=1.0,
+        description="Pass 1: how aggressively the agent bids for the right to speak (DALA).",
+    )
+    value_density_estimator: float = Field(
+        default=0.5, ge=0.0, le=1.0,
+        description="Pass 1: weight on predicted message value density when bidding.",
+    )
+    capability_embedding: list[float] = Field(
+        default_factory=lambda: [0.0] * 32,
+        description="Pass 1: 32-dim learned vector of agent's claimed competencies. "
+                    "Replaces discrete specialization affinity. IoA two-stage discovery pattern.",
+    )
+    marginal_contribution_threshold: float = Field(
+        default=0.0, ge=0.0, le=1.0,
+        description="Pass 1: voluntary self-abstention threshold. Counters Coordination Tax.",
+    )
+    leader_candidacy: float = Field(
+        default=0.5, ge=0.0, le=1.0,
+        description="Pass 1: willingness to nominate self for elected coordinator role.",
+    )
+    connection_affinity: list[float] = Field(
+        default_factory=lambda: [],
+        description="Pass 1: preference weights over peer agents (mutates based on past "
+                    "interaction quality). AgentNet-style topology evolution. Empty at genesis.",
+    )
 
 
 class GenerationGenes(_Base):
@@ -245,6 +329,20 @@ class FitnessEvaluation(_Base):
         default=None,
         description="v2: optional attacker the defender was evaluated against. "
                     "None for clean (no-attacker) evaluations.",
+    )
+    tool_call_count: int = Field(
+        default=0, ge=0,
+        description="Pass 1: process-reward signal — number of tool calls the defender made.",
+    )
+    step_coherence: float | None = Field(
+        default=None, ge=0.0, le=1.0,
+        description="Pass 1: process-reward signal — coherence of multi-step reasoning trace.",
+    )
+    process_latency_ms: int | None = Field(
+        default=None, ge=0,
+        description="Pass 1: process-reward signal — wall-clock latency of the runner's "
+                    "evaluation pass in ms. Distinct from components.latency_ms which "
+                    "captures the latency value passed to the judge for scoring.",
     )
 
 
