@@ -1,0 +1,47 @@
+services:
+  supervisor:
+    build:
+      context: .
+      dockerfile: docker/python.Dockerfile
+    command: python scripts/run_all.py
+    environment:
+      MONGODB_URI: ${MONGODB_URI}
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_VERTEX_PROJECT_ID: ${ANTHROPIC_VERTEX_PROJECT_ID:-}
+      CLOUD_ML_REGION: ${CLOUD_ML_REGION:-global}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/python.Dockerfile
+    command: uvicorn darwin.api.server:app --host 0.0.0.0 --port 8080
+    environment:
+      MONGODB_URI: ${MONGODB_URI}
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_VERTEX_PROJECT_ID: ${ANTHROPIC_VERTEX_PROJECT_ID:-}
+      CLOUD_ML_REGION: ${CLOUD_ML_REGION:-global}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  hono:
+    build:
+      context: .
+      dockerfile: docker/node.Dockerfile
+    environment:
+      PORT: "3300"
+      MONGODB_URI: ${MONGODB_URI}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY}
+      PYTHON_SERVICE_URL: http://api:8080
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "3300:3300"
+    depends_on:
+      - api
+    restart: unless-stopped

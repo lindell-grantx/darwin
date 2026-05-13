@@ -17,3 +17,6 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# Docker compose env (contains secrets, never commit)
+.env.docker

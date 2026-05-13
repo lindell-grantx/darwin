@@ -57,7 +57,32 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full component map and 
 - A [Voyage AI](https://www.voyageai.com/) API key (for embeddings and reranking)
 - An [Anthropic](https://console.anthropic.com/) API key (for the LLM judge and answer generator) — or a GCP project with Vertex AI enabled
 
-### Install
+### Quickstart with Docker Compose (recommended)
+
+```bash
+git clone https://github.com/lindell-grantx/darwin.git
+cd darwin
+cp .env.docker.example .env.docker
+# Edit .env.docker — fill in MONGODB_URI, VOYAGE_API_KEY, ANTHROPIC_API_KEY
+docker compose --env-file .env.docker up --build
+```
+
+After build, the Hono API is at http://localhost:3300. Seed in another terminal:
+
+```bash
+docker compose exec supervisor python scripts/seed_corpus.py
+docker compose exec supervisor python scripts/seed_queries.py
+docker compose exec supervisor python scripts/seed_attackers.py
+docker compose exec supervisor python scripts/seed_query_type_buckets.py
+```
+
+Smoke-test the routing layer:
+
+```bash
+DARWIN_API_URL=http://localhost:3300 python scripts/v2_mvp_smoke.py
+```
+
+### Install (native)
 
 ```bash
 git clone https://github.com/lindell-grantx/darwin.git
