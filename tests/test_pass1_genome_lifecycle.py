@@ -87,3 +87,36 @@ def test_gene_distance_uses_new_continuous_genes():
     d_with = gene_distance(g_a, g_b)
     d_without = gene_distance(g_a, g_a.model_copy(deep=True))
     assert d_with > d_without
+
+
+def test_crossover_propagates_new_genes():
+    """uniform_crossover should produce children with valid values for all new genes."""
+    from darwin.genome.crossover import uniform_crossover
+
+    rng = random.Random(42)
+    p1 = random_genome(rng=rng)
+    p2 = random_genome(rng=random.Random(99))
+    child = uniform_crossover(p1, p2, generation=1, rng=random.Random(7))
+
+    # Child should have valid (parent-derived) values for each new field
+    assert child.retrieval_genes.retrieval_mode_router in (
+        p1.retrieval_genes.retrieval_mode_router,
+        p2.retrieval_genes.retrieval_mode_router,
+    )
+    assert child.retrieval_genes.search_depth_policy in (
+        p1.retrieval_genes.search_depth_policy,
+        p2.retrieval_genes.search_depth_policy,
+    )
+    assert child.coordination_genes.signal_decay_rate in (
+        p1.coordination_genes.signal_decay_rate,
+        p2.coordination_genes.signal_decay_rate,
+    )
+    assert child.coordination_genes.sycophancy_spectrum in (
+        p1.coordination_genes.sycophancy_spectrum,
+        p2.coordination_genes.sycophancy_spectrum,
+    )
+    # capability_embedding: child should inherit one parent's vector entirely
+    assert (
+        child.coordination_genes.capability_embedding == p1.coordination_genes.capability_embedding
+        or child.coordination_genes.capability_embedding == p2.coordination_genes.capability_embedding
+    )

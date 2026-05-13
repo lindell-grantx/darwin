@@ -25,12 +25,30 @@ _RETRIEVAL_FIELDS = (
     "rerank",
     "confidence_threshold",
     "top_k",
+    "search_depth_policy",
+    "retrieval_mode_router",
+    "hierarchical_traversal_strategy",
+    "graph_construction_mode",
+    "graph_eagerness",
+    "embedding_compression_dim",
+    "embedding_quantization",
+    "context_utilization_ratio",
 )
 _COORDINATION_FIELDS = (
     "protocol",
     "consult_threshold",
     "timeout_ms",
     "debate_rounds",
+    "signal_decay_rate",
+    "pressure_response_sensitivity",
+    "sycophancy_spectrum",
+    "confidence_calibration",
+    "bid_aggressiveness",
+    "value_density_estimator",
+    "marginal_contribution_threshold",
+    "leader_candidacy",
+    "capability_embedding",
+    "connection_affinity",
 )
 _GENERATION_FIELDS = (
     "model",
@@ -61,9 +79,13 @@ def uniform_crossover(
     - has fresh `id`, `status="alive"`, fresh `fitness` summary
     - inherits no fitness data from parents
 
-    Special handling for `source_routing` (a list): pick each tag from p1 with
-    50% probability (union semantics); ensure the result is non-empty (fallback
-    to p1's full list).
+    Special handling for tag-set lists (`source_routing`, `retrieval_tool_set`):
+    union the parents' tags then keep each with 50% probability; fall back to
+    p1's full list if the result is empty.
+
+    Vector fields (`capability_embedding`, `connection_affinity`) are picked
+    whole from one parent (single-parent inheritance). Component-wise
+    interpolation is deferred to Pass 2.
     """
 
     rng = rng if rng is not None else random.Random()
@@ -73,11 +95,21 @@ def uniform_crossover(
         for field in _RETRIEVAL_FIELDS
     }
 
-    union = list(dict.fromkeys(list(p1.retrieval_genes.source_routing) + list(p2.retrieval_genes.source_routing)))
-    chosen = [tag for tag in union if rng.random() < 0.5]
-    if not chosen:
-        chosen = list(p1.retrieval_genes.source_routing)
-    retrieval_kwargs["source_routing"] = chosen
+    source_union = list(dict.fromkeys(
+        list(p1.retrieval_genes.source_routing) + list(p2.retrieval_genes.source_routing)
+    ))
+    source_chosen = [tag for tag in source_union if rng.random() < 0.5]
+    if not source_chosen:
+        source_chosen = list(p1.retrieval_genes.source_routing)
+    retrieval_kwargs["source_routing"] = source_chosen
+
+    tools_union = list(dict.fromkeys(
+        list(p1.retrieval_genes.retrieval_tool_set) + list(p2.retrieval_genes.retrieval_tool_set)
+    ))
+    tools_chosen = [tag for tag in tools_union if rng.random() < 0.5]
+    if not tools_chosen:
+        tools_chosen = list(p1.retrieval_genes.retrieval_tool_set)
+    retrieval_kwargs["retrieval_tool_set"] = tools_chosen
 
     coordination_kwargs = {
         field: _pick(rng, getattr(p1.coordination_genes, field), getattr(p2.coordination_genes, field))
