@@ -242,6 +242,12 @@ class Genome(_Base):
         description="Pass 1: island index (0..N_ISLANDS-1) for spatial population structure. "
                     "Migration moves best-of-island across islands every K generations.",
     )
+    pipeline: "RetrievalPipeline | None" = Field(
+        default=None,
+        description="Pass 2: optional DAG retrieval pipeline. When set, runner uses "
+                    "this instead of executing flat retrieval_genes. Backwards-compatible: "
+                    "None means use legacy flat-genes path.",
+    )
 
 
 class Generation(_Base):
@@ -445,3 +451,7 @@ class QueryTypeBucket(_Base):
     embedding: list[float] = Field(description="Centroid embedding (Voyage-4 1024-dim).")
     n_queries: int = Field(description="Number of seeded queries in this bucket.")
     created_at: datetime = Field(default_factory=_now)
+
+
+from darwin.genome.pipeline import RetrievalPipeline  # noqa: E402
+Genome.model_rebuild()

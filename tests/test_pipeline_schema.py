@@ -70,3 +70,16 @@ def test_pipeline_detects_unknown_node_in_edge():
     )
     with pytest.raises(ValueError, match="unknown"):
         p.validate_dag()
+
+
+def test_genome_pipeline_field_optional():
+    from darwin.db.schemas import Genome
+    from darwin.genome.factory import random_genome
+    import random
+    g = random_genome(rng=random.Random(0))
+    assert g.pipeline is None  # default off
+
+    from darwin.genome.pipeline_factory import default_linear_pipeline
+    g.pipeline = default_linear_pipeline(g.retrieval_genes)
+    assert g.pipeline is not None
+    assert len(g.pipeline.nodes) == 5
