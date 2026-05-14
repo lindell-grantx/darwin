@@ -120,7 +120,7 @@ def uniform_crossover(
         for field in _GENERATION_FIELDS
     }
 
-    return Genome(
+    child = Genome(
         generation=generation,
         status="alive",
         parent_ids=[p1.id, p2.id],
@@ -129,3 +129,7 @@ def uniform_crossover(
         generation_genes=GenerationGenes(**generation_kwargs),
         fitness=FitnessSummary(),
     )
+    parent_for_pipeline = rng.choice([p1, p2])
+    if parent_for_pipeline.pipeline is not None:
+        child.pipeline = parent_for_pipeline.pipeline.model_copy(deep=True)
+    return child

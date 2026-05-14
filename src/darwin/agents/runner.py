@@ -111,6 +111,80 @@ async def run_genome(
     retrieval_genes = dict(genome.get("retrieval_genes", {}))
     coordination_genes = dict(genome.get("coordination_genes", {}))
 
+    pipeline_value = genome.get("pipeline")
+    if pipeline_value is not None:
+        from darwin.agents.pipeline_runner import execute_pipeline
+        from darwin.genome.pipeline import RetrievalPipeline
+
+        pipeline = (
+            pipeline_value
+            if isinstance(pipeline_value, RetrievalPipeline)
+            else RetrievalPipeline.model_validate(pipeline_value)
+        )
+        pipeline_result = await execute_pipeline(pipeline, query)
+        chunks_pre = list(pipeline_result["chunks"])
+        attacked_query, attacked_chunks = _apply_attacker(
+            query=query, chunks=chunks_pre, attacker=attacker
+        )
+        # Pipeline already produced an answer over the un-attacked chunks; if an
+        # attacker is present we re-run only the generate step over the attacked
+        # context so judging stays apples-to-apples with the legacy path.
+        if attacker is not None:
+            from darwin.llm.vertex import vertex_complete
+            from darwin.agents.pipeline_runner import (
+                _GENERATOR_MODEL_ALIASES,
+                operator_to_legacy_kwargs,
+            )
+
+            gen_node = next(
+                (n for n in pipeline.topological_sort() if n.stage == "generate"),
+                None,
+            )
+            if gen_node is not None:
+                gen_kwargs = operator_to_legacy_kwargs(gen_node)
+                model_alias = gen_kwargs.get("model", "claude_haiku")
+                model_id = _GENERATOR_MODEL_ALIASES.get(model_alias, model_alias)
+                context = "\n\n".join(
+                    c.text if hasattr(c, "text") else str(c)
+                    for c in attacked_chunks[:10]
+                )
+                answer = await vertex_complete(
+                    system="Answer the user query using the retrieved context.",
+                    user=f"Query: {attacked_query}\n\nContext:\n{context}",
+                    max_tokens=512,
+                    model=model_id,
+                )
+            else:
+                answer = pipeline_result["answer"]
+        else:
+            answer = pipeline_result["answer"]
+        candidates = []
+        _tool_call_count += 2
+        latency_ms = (time.perf_counter() - started) * 1000
+        fitness = await evaluate_answer(
+            query=query,
+            answer=answer,
+            contexts=[chunk.text for chunk in attacked_chunks],
+            ground_truth=ground_truth,
+            latency_ms=latency_ms,
+            cost_usd=0.0,
+        )
+        _tool_call_count += 1
+        _process_latency_ms = int((time.monotonic() - _eval_start) * 1000)
+        result = AgentRunResult(
+            run_id=run_id or str(uuid.uuid4()),
+            genome_id=genome_id,
+            answer=answer,
+            chunks=attacked_chunks,
+            candidates=candidates,
+            fitness=fitness,
+            tool_call_count=_tool_call_count,
+            process_latency_ms=_process_latency_ms,
+        )
+        if persist:
+            await persist_run_result(result, eval_split=eval_split)
+        return result
+
     chunks = await retrieve(query, retrieval_genes)
     _tool_call_count += 1
     attacked_query, attacked_chunks = _apply_attacker(
