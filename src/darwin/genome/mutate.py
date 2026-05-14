@@ -14,6 +14,7 @@ from darwin.db.schemas import (
     ReasoningPattern,
     RetrievalGenes,
 )
+from darwin.genome.pipeline_mutate import mutate_pipeline as _mutate_pipeline
 
 
 __all__ = ["mutate"]
@@ -368,7 +369,7 @@ def mutate(
         self_critique=self_critique,
     )
 
-    return Genome(
+    new_genome = Genome(
         id=g.id,
         generation=g.generation,
         status=g.status,
@@ -379,4 +380,8 @@ def mutate(
         fitness=FitnessSummary(),
         created_at=g.created_at,
         notes=g.notes,
+        island_id=g.island_id,
     )
+    if g.pipeline is not None:
+        new_genome.pipeline = _mutate_pipeline(g.pipeline, rate, rng=rng)
+    return new_genome

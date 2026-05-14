@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import random
 from typing import Optional, get_args
 
@@ -18,6 +19,7 @@ from darwin.db.schemas import (
     RetrievalGenes,
     SourceTag,
 )
+from darwin.genome.pipeline_factory import default_linear_pipeline
 
 
 __all__ = ["random_genome", "random_population"]
@@ -139,13 +141,16 @@ def random_genome(
         self_critique=rng.choice([True, False]),
     )
 
-    return Genome(
+    g = Genome(
         generation=generation,
         parent_ids=list(parent_ids),
         retrieval_genes=retrieval,
         coordination_genes=coordination,
         generation_genes=generation_genes,
     )
+    if os.environ.get("DARWIN_USE_DAG_GENOME") == "1":
+        g.pipeline = default_linear_pipeline(retrieval)
+    return g
 
 
 def random_population(
