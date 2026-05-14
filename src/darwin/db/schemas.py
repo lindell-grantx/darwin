@@ -30,6 +30,7 @@ COLLECTION_EVOLUTION_EVENTS = "evolution_events"
 COLLECTION_ATTACKERS = "attackers"
 COLLECTION_NASH_STRATEGIES = "nash_strategies"
 COLLECTION_QUERY_TYPE_BUCKETS = "query_type_buckets"
+COLLECTION_ATTACKER_ARCHIVE = "attacker_archive"
 
 
 EmbeddingModel = Literal[
@@ -430,6 +431,23 @@ class Attacker(_Base):
     payload: str = Field(description="The poison chunk or injection text.")
     notes: str = ""
     created_at: datetime = Field(default_factory=_now)
+    generation: int = Field(default=0, ge=0,
+        description="Pass 2: which attacker generation produced this. Static MVP fixtures = 0.")
+    parent_ids: list[str] = Field(default_factory=list,
+        description="Pass 2: ids of parents that produced this attacker via mutation.")
+    composite_fitness: float = Field(default=0.0,
+        description="Pass 2: PAIRED regret signal. Higher = more discriminating attack.")
+
+
+class AttackerArchive(_Base):
+    """RainbowPlus QD cell for evolved attackers, indexed by (risk_category x attack_style)."""
+
+    id: str = Field(default_factory=_new_id, alias="_id")
+    cell_key: tuple[str, ...] = Field(
+        description="Two-element tuple: (risk_category, attack_style).",
+    )
+    attacker_ids: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class NashStrategy(_Base):
