@@ -9,6 +9,7 @@ Reference: RainbowPlus (arXiv:2504.15047).
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from darwin.db.schemas import Attacker
@@ -42,6 +43,20 @@ def cell_key_for_attacker(attacker: Attacker) -> tuple[str, str]:
     risk = _infer_risk_category(text, attacker.attack_vector_type)
     style = _infer_attack_style(text)
     return (risk, style)
+
+
+async def cell_key_for_attacker_async(attacker: Attacker) -> tuple[str, str]:
+    """Async classifier with optional LLM delegation (Pass 3).
+
+    When DARWIN_USE_LLM_ATTACKER_CLASSIFIER=1, calls llm_classify_attacker
+    and falls back to keyword heuristic on None. Otherwise uses the heuristic.
+    """
+    if os.environ.get("DARWIN_USE_LLM_ATTACKER_CLASSIFIER") == "1":
+        from darwin.attacker.llm_classifier import llm_classify_attacker
+        result = await llm_classify_attacker(attacker)
+        if result is not None:
+            return result
+    return cell_key_for_attacker(attacker)
 
 
 def _infer_risk_category(text: str, attack_vector_type: str) -> str:
