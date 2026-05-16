@@ -50,9 +50,11 @@ from darwin.evolution.dgm_select import (
 )
 from darwin.evolution.novelty import novelty_reject
 from darwin.evolution.islands import migrate, should_migrate
+from darwin.evolution.lipizzaner import assign_to_grid
 from darwin.evolution.plateau import should_use_opus
 from darwin.genome.mutate import mutate
 from darwin.genome.types import gene_distance
+from darwin.attacker.evolution import attacker_evolve_generation
 
 
 log = logging.getLogger(__name__)
@@ -188,6 +190,21 @@ async def evolve_generation(
                 {"_id": g.id},
                 {"$set": {"island_id": g.island_id}},
             )
+
+    # Pass 2: assign grid positions to new offspring + elites
+    assign_to_grid(offspring + list(elites))
+    # Persist grid_position back to Mongo
+    for g in offspring + list(elites):
+        if g.grid_position is not None:
+            await db[COLLECTION_GENOMES].update_one(
+                {"_id": g.id},
+                {"$set": {"grid_position": list(g.grid_position)}},
+            )
+
+    # Pass 2: every K=2 generations, evolve attackers as well
+    ATTACKER_EVOLVE_INTERVAL = 2
+    if (generation + 1) % ATTACKER_EVOLVE_INTERVAL == 0:
+        await attacker_evolve_generation(db, n_offspring=5, generation=generation)
 
     if elite_ids:
         await db[COLLECTION_GENOMES].update_many(
