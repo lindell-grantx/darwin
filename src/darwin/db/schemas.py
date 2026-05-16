@@ -249,6 +249,10 @@ class Genome(_Base):
                     "this instead of executing flat retrieval_genes. Backwards-compatible: "
                     "None means use legacy flat-genes path.",
     )
+    grid_position: tuple[int, int] | None = Field(
+        default=None,
+        description="Pass 2: (row, col) on the Lipizzaner toroidal grid. None = unassigned.",
+    )
 
 
 class Generation(_Base):
@@ -437,6 +441,10 @@ class Attacker(_Base):
         description="Pass 2: ids of parents that produced this attacker via mutation.")
     composite_fitness: float = Field(default=0.0,
         description="Pass 2: PAIRED regret signal. Higher = more discriminating attack.")
+    grid_position: tuple[int, int] | None = Field(
+        default=None,
+        description="Pass 2: (row, col) on the Lipizzaner toroidal grid. None = unassigned.",
+    )
 
 
 class AttackerArchive(_Base):
