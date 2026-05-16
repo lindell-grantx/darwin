@@ -1,8 +1,0 @@
-Metadata-Version: 2.4
-Name: darwin-demo
-Version: 0.1.0
-Summary: Darwin terminal demo and smoke-test utilities
-Requires-Python: >=3.12
-Requires-Dist: motor
-Requires-Dist: pytest
-Requires-Dist: rich

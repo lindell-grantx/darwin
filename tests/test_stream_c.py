@@ -27,7 +27,12 @@ def test_vector_pipeline_uses_genome_model_path_and_index() -> None:
 
 
 def test_coordinate_highest_confidence_protocol(monkeypatch: MonkeyPatch) -> None:
-    async def fake_generate(query: str, chunks: list[RetrievedChunk], agent_name: str) -> CandidateAnswer:
+    async def fake_generate(
+        query: str,
+        chunks: list[RetrievedChunk],
+        agent_name: str,
+        **kwargs: object,
+    ) -> CandidateAnswer:
         confidence = {"retriever": 0.7, "skeptic": 0.4, "synthesizer": 0.9}[agent_name]
         return CandidateAnswer(agent_name=agent_name, answer=f"{agent_name} answer", confidence=confidence)
 
@@ -57,6 +62,7 @@ def test_run_genome_wires_retrieval_coordination_and_judge(monkeypatch: MonkeyPa
         query: str,
         retrieved: list[RetrievedChunk],
         genes: dict,
+        **kwargs: object,
     ) -> tuple[str, list[CandidateAnswer]]:
         assert retrieved == chunks
         assert genes["protocol"] == "solo"
@@ -115,6 +121,7 @@ def test_dar_9_execute_protocol_signature(monkeypatch: MonkeyPatch) -> None:
         query: str,
         retrieved: list[RetrievedChunk],
         genes: dict,
+        **kwargs: object,
     ) -> tuple[str, list[CandidateAnswer]]:
         return "Darwin retrieves evidence.", [
             CandidateAnswer("synthesizer", "Darwin retrieves evidence.", 0.9)

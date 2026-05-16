@@ -154,7 +154,7 @@ async def reflect_and_mutate(
     from darwin.llm.vertex import vertex_complete, is_vertex_configured
     from darwin.genome.mutate import mutate
 
-    model_label = model if model is not None else "haiku-default"
+    model_label = model if model is not None else "vertex-default"
 
     if not is_vertex_configured():
         return mutate(parent, fallback_rate, rng=rng), {
