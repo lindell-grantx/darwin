@@ -13,7 +13,7 @@ import logging
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from darwin.attacker.llm_mutator import mutate_attacker
-from darwin.attacker.qd_archive import cell_key_for_attacker, qd_admit
+from darwin.attacker.qd_archive import cell_key_for_attacker_async, qd_admit
 from darwin.db.schemas import (
     Attacker,
     AttackerArchive,
@@ -68,7 +68,7 @@ async def attacker_evolve_generation(
     # Refresh QD archive from current attackers + children
     archive_cells: dict[tuple[str, str], dict] = {}
     for a in attackers + children:
-        cell = cell_key_for_attacker(a)
+        cell = await cell_key_for_attacker_async(a)
         candidate = {"id": a.id, "composite_fitness": a.composite_fitness}
         qd_admit(archive_cells, cell, candidate)
 
