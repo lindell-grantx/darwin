@@ -30,6 +30,7 @@ from darwin.db.schemas import (
 )
 from darwin.db.schemas import COLLECTION_EVOLUTION_EVENTS
 from darwin.evolution.nash_msne import PayoffMatrix, solve_two_axis_nash
+from darwin.evolution.nash_two_stage import solve_two_stage_nash
 from darwin.evolution import (
     ELITE_K,
     EVALS_PER_GEN_THRESHOLD,
@@ -442,7 +443,7 @@ async def _recompute_two_axis_nash(db, *, generation: int) -> None:
         query_classes=sorted(query_classes),
         scores=averaged,
     )
-    strategy = solve_two_axis_nash(pm)
+    strategy = solve_two_stage_nash(pm)
     if strategy:
         ns = NashStrategy(
             weights=strategy,
