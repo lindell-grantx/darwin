@@ -414,3 +414,36 @@ Reflective mutation defaults to Vertex Haiku. Opus (claude-opus-4-7) is triggere
 `scripts/pass1_smoke.py` runs 30 generations and asserts:
 - Cell coverage > 50%
 - MADE max pairwise predicate correlation < 0.95
+
+---
+
+## Pass 2 (Phase C frontier)
+
+Pass 2 ships the headline research bet: defenders evolve against an evolving attacker population on a Lipizzaner spatial grid, with two-axis Nash MSNE deployment and MAP-Elites defender archive (Dominated-Novelty-Search fallback).
+
+### DAG retrieval genome
+
+`Genome.pipeline` is an optional `RetrievalPipeline` of typed nodes spanning the 9-stage RAGSmith taxonomy: pre_embed_enrich, chunk, embed, retrieve, fuse, rerank, post_retrieve_filter, generate, post_gen_refine. Required stages: chunk, embed, retrieve, generate. Optional stages mutate via add/remove. Crossover for DAG topology is unsolved — pipeline is inherited whole from one parent. Opt-in via `DARWIN_USE_DAG_GENOME=1`.
+
+### Evolving attacker population
+
+Attackers gain `generation`, `parent_ids`, `composite_fitness` fields. LLM-as-mutator (Vertex Haiku) generates semantically coherent novel poison/injection. RainbowPlus QD archive over (risk_category × attack_style) cells prevents attacker population collapse. PAIRED regret = `max(0, best_defender_score − baseline_score)` provides automatic curriculum.
+
+### Lipizzaner spatial grid
+
+Defenders + attackers placed on a 3×3 toroidal grid (`grid_position` field). Each defender at (r, c) is evaluated against attackers in its 3×3 neighborhood (with wraparound). Attacker generation rolls every 2 defender generations.
+
+### Two-axis Nash MSNE
+
+Every 10 generations, the conductor builds a PayoffMatrix `M[d, a, q]` from recent fitness evaluations and solves for the defender mixed strategy via nashpy's vertex enumeration on the averaged-over-q payoff matrix. Routing samples defenders by these Nash weights.
+
+### MAP-Elites defender archive
+
+Cells indexed by (retrieval_strategy_class × response_style × citation_density_bucket) — 27 cells. DNS fallback (`base_fitness − 0.05 × neighborhood_density`) when cells are too sparse.
+
+### Verification
+
+`scripts/pass2_smoke.py` runs 50 generations and asserts:
+- Defender cell coverage > 40%
+- Attacker cell coverage grows monotonically
+- Nash strategy max delta between consecutive solves < 0.1 after 20 generations

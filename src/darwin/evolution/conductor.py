@@ -24,9 +24,12 @@ from darwin.db.schemas import (
     COLLECTION_FITNESS_EVALUATIONS,
     COLLECTION_GENERATIONS,
     COLLECTION_GENOMES,
+    COLLECTION_NASH_STRATEGIES,
     Genome,
+    NashStrategy,
 )
 from darwin.db.schemas import COLLECTION_EVOLUTION_EVENTS
+from darwin.evolution.nash_msne import PayoffMatrix, solve_two_axis_nash
 from darwin.evolution import (
     ELITE_K,
     EVALS_PER_GEN_THRESHOLD,
@@ -205,6 +208,11 @@ async def evolve_generation(
     ATTACKER_EVOLVE_INTERVAL = 2
     if (generation + 1) % ATTACKER_EVOLVE_INTERVAL == 0:
         await attacker_evolve_generation(db, n_offspring=5, generation=generation)
+
+    # Pass 2: every 10 generations, recompute two-axis Nash MSNE strategy
+    NASH_RECOMPUTE_INTERVAL = 10
+    if (generation + 1) % NASH_RECOMPUTE_INTERVAL == 0:
+        await _recompute_two_axis_nash(db, generation=generation + 1)
 
     if elite_ids:
         await db[COLLECTION_GENOMES].update_many(
@@ -395,3 +403,52 @@ async def _load_fitness_history(db, *, last_n_gens: int = 10) -> list[float]:
     docs = await cursor.to_list(length=last_n_gens)
     docs.reverse()
     return [float(d.get("best_fitness", 0.0)) for d in docs]
+
+
+async def _recompute_two_axis_nash(db, *, generation: int) -> None:
+    """Build a PayoffMatrix from recent fitness_evaluations + solve MSNE."""
+    diff_map: dict[str, str] = {}
+    async for q in db["queries"].find({}, projection={"_id": 1, "domain_tags": 1}):
+        diff_map[str(q["_id"])] = ",".join(q.get("domain_tags") or [])
+
+    cursor = db[COLLECTION_FITNESS_EVALUATIONS].find(
+        {"generation": {"$gte": max(0, generation - 5)}},
+        projection={"genome_id": 1, "attacker_id": 1, "query_id": 1, "composite_fitness": 1},
+    )
+
+    defender_ids: set[str] = set()
+    attacker_ids: set[str] = set()
+    query_classes: set[str] = set()
+    sums: dict[tuple[str, str, str], float] = {}
+    counts: dict[tuple[str, str, str], int] = {}
+
+    async for row in cursor:
+        d = row["genome_id"]
+        a = row.get("attacker_id") or "_NONE_"
+        q = diff_map.get(row["query_id"])
+        if not q:
+            continue
+        defender_ids.add(d)
+        attacker_ids.add(a)
+        query_classes.add(q)
+        key = (d, a, q)
+        sums[key] = sums.get(key, 0.0) + float(row["composite_fitness"])
+        counts[key] = counts.get(key, 0) + 1
+
+    averaged = {k: sums[k] / counts[k] for k in sums}
+    pm = PayoffMatrix(
+        defender_ids=sorted(defender_ids),
+        attacker_ids=sorted(attacker_ids),
+        query_classes=sorted(query_classes),
+        scores=averaged,
+    )
+    strategy = solve_two_axis_nash(pm)
+    if strategy:
+        ns = NashStrategy(
+            weights=strategy,
+            snapshot_generation=generation,
+        )
+        await db[COLLECTION_NASH_STRATEGIES].insert_one(
+            ns.model_dump(by_alias=True, mode="json")
+        )
+        log.info("two-axis Nash recomputed: %d defenders weighted at gen %d", len(strategy), generation)
