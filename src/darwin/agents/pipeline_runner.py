@@ -6,8 +6,9 @@ order and dispatches each node to the matching `retrieval.steps` callable
 (`chunk_query` / `embed_query` / `vector_search` / `rerank_chunks`) plus a
 `generate` step via `darwin.llm.vertex.vertex_complete`.
 
-PR-4 wires up the optional stages (pre_embed_enrich / fuse / post_retrieve_filter
-/ post_gen_refine) and full branching execution.
+PR-4 wires up branching execution: each node reads upstream context from its
+incoming edges, produces output context for downstream consumers, and fuse
+nodes merge multiple upstream contexts via RRF.
 """
 
 from __future__ import annotations
@@ -53,64 +54,92 @@ def operator_to_legacy_kwargs(node: PipelineNode) -> dict[str, Any]:
 async def execute_pipeline(
     pipeline: RetrievalPipeline,
     query: str,
+    *,
+    db=None,
 ):
-    """Execute the DAG end-to-end via discrete steps.
+    """Execute the DAG. Supports fan-out + RRF fuse.
 
-    Walks `pipeline.topological_sort()` and dispatches each node to its
-    corresponding step function based on `node.stage`. Branching is NOT yet
-    supported (PR-4 adds it). For PR-3, we expect linear DAGs only — the
-    `default_linear_pipeline` output.
-
-    Returns dict with `answer`, `chunks`, and `embedding` keys.
+    Walks topological order; each node reads upstream context from incoming
+    edges, produces output context for downstream consumers. Fuse nodes merge
+    multiple upstream contexts via the operator's fuse method (RRF).
     """
-    from darwin.retrieval.steps import (
-        chunk_query,
-        embed_query,
-        vector_search,
-        rerank_chunks,
-    )
+    from darwin.retrieval import steps as retrieval_steps
 
     sorted_nodes = pipeline.topological_sort()
 
-    current_query: str = query
-    embedding: list[float] = []
-    chunks: list = []
-    answer: str = ""
-    embedding_model: str = "voyage-4"
+    # incoming: dst_id -> list[src_id]
+    incoming: dict[str, list[str]] = {n.node_id: [] for n in pipeline.nodes}
+    for e in pipeline.edges:
+        incoming[e.to_id].append(e.from_id)
+
+    # Per-node output context dict
+    contexts: dict[str, dict] = {}
 
     for node in sorted_nodes:
+        upstream_ids = incoming[node.node_id]
+        upstream_ctxs = [contexts[uid] for uid in upstream_ids if uid in contexts]
+
+        # Compose input context from upstream
+        if len(upstream_ctxs) > 1 and node.stage == "fuse":
+            ctx = _fuse_contexts(upstream_ctxs, node)
+        elif len(upstream_ctxs) >= 1:
+            ctx = dict(upstream_ctxs[0])
+        else:
+            ctx = {"query": query, "embedding": [], "chunks": [], "answer": ""}
+
         kwargs = operator_to_legacy_kwargs(node)
+
         if node.stage == "chunk":
-            current_query = await chunk_query(current_query, kwargs)
+            ctx["query"] = await retrieval_steps.chunk_query(ctx.get("query", query), kwargs)
         elif node.stage == "embed":
-            embedding_model = kwargs.get("model", "voyage-4")
-            embedding = await embed_query(current_query, kwargs)
+            ctx["embedding"] = await retrieval_steps.embed_query(ctx.get("query", query), kwargs)
         elif node.stage == "retrieve":
-            # vector_search needs the genes-shaped dict to pick the right Atlas
-            # index/path; carry the embedding model from the embed node visited above.
-            search_params = {
-                "genes": {"embedding_model": embedding_model},
-                "top_k": kwargs["top_k"],
-                "confidence_threshold": kwargs["confidence_threshold"],
-            }
-            chunks = await vector_search(embedding, search_params)
+            ctx["chunks"] = await retrieval_steps.vector_search(ctx.get("embedding", []), kwargs)
         elif node.stage == "rerank":
-            chunks = await rerank_chunks(current_query, chunks, kwargs)
+            ctx["chunks"] = await retrieval_steps.rerank_chunks(
+                ctx.get("query", query), ctx.get("chunks", []), kwargs,
+            )
         elif node.stage == "generate":
-            from darwin.llm.vertex import vertex_complete
-
-            model_alias = kwargs.get("model", "claude_haiku")
-            model_id = _GENERATOR_MODEL_ALIASES.get(model_alias, model_alias)
-            context = "\n\n".join(
+            from darwin.llm import vertex as vertex_mod
+            chunks_for_ctx = ctx.get("chunks", [])
+            context_text = "\n\n".join(
                 c.text if hasattr(c, "text") else str(c)
-                for c in chunks[:10]
+                for c in chunks_for_ctx[:10]
             )
-            answer = await vertex_complete(
+            ctx["answer"] = await vertex_mod.vertex_complete(
                 system="Answer the user query using the retrieved context.",
-                user=f"Query: {current_query}\n\nContext:\n{context}",
+                user=f"Query: {ctx.get('query', query)}\n\nContext:\n{context_text}",
                 max_tokens=512,
-                model=model_id,
             )
-        # pre_embed_enrich / fuse / post_retrieve_filter / post_gen_refine — PR-4 wires them.
+        # pre_embed_enrich / fuse / post_retrieve_filter / post_gen_refine —
+        # fuse handled above by _fuse_contexts; others pass-through for now
 
-    return {"answer": answer, "chunks": chunks, "embedding": embedding}
+        contexts[node.node_id] = ctx
+
+    # Final output is the context of the last node
+    final = contexts[sorted_nodes[-1].node_id]
+    return {
+        "answer": final.get("answer", ""),
+        "chunks": final.get("chunks", []),
+        "embedding": final.get("embedding", []),
+    }
+
+
+def _fuse_contexts(upstream_ctxs: list[dict], fuse_node) -> dict:
+    """Merge multiple upstream contexts. For Pass 3, fuse method is 'rrf' on chunks."""
+    if fuse_node.operator == "rrf":
+        # Reciprocal Rank Fusion on chunks
+        scores: dict[str, float] = {}
+        chunk_by_id: dict[str, object] = {}
+        for ctx in upstream_ctxs:
+            for rank, chunk in enumerate(ctx.get("chunks", [])):
+                cid = chunk.chunk_id if hasattr(chunk, "chunk_id") else str(chunk)
+                scores[cid] = scores.get(cid, 0.0) + 1.0 / (60 + rank)
+                chunk_by_id[cid] = chunk
+        ranked_ids = sorted(scores, key=lambda c: -scores[c])
+        merged = dict(upstream_ctxs[0])
+        merged["chunks"] = [chunk_by_id[cid] for cid in ranked_ids]
+        return merged
+
+    # Identity fuse: take first upstream
+    return dict(upstream_ctxs[0])

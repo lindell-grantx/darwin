@@ -23,9 +23,9 @@ from darwin.genome.pipeline import (
 # can grow this by stage as new operators are implemented.
 _OPERATORS_BY_STAGE: dict[str, tuple[str, ...]] = {
     "pre_embed_enrich": ("identity", "metadata_inject"),
-    "chunk": ("fixed_size", "semantic_paragraph", "sentence_window"),
+    "chunk": ("fixed_size", "semantic_paragraph", "sentence_window", "multi_query"),
     "embed": ("voyage_4", "voyage_4_large", "voyage_4_lite", "voyage_4_nano"),
-    "retrieve": ("vector", "hybrid", "keyword"),
+    "retrieve": ("vector", "hybrid", "keyword", "topic_summary"),
     "fuse": ("identity", "rrf"),
     "rerank": ("none", "rrf", "voyage_rerank_2"),
     "post_retrieve_filter": ("identity", "confidence_threshold", "dedupe"),
