@@ -1,16 +1,13 @@
-"""Pass 2: execute a RetrievalPipeline DAG against a query.
+"""Pass 3: execute a RetrievalPipeline DAG against a query via discrete steps.
 
-For Pass 2 we route operators to the same underlying functions the legacy
-flat-genes runner uses (chunk/embed/retrieve/rerank/generate). The DAG just
-provides structure; per-stage behavior is unchanged. Pass 3+ can introduce
-operators that don't exist in the legacy path (e.g., LightRAG-style graph
-construction at retrieve, ColPali vision-direct embedding).
+Pass 3 PR-3 update: this module no longer collapses the DAG into a flat legacy
+genes dict and calls `retriever.retrieve()`. Instead it walks the topological
+order and dispatches each node to the matching `retrieval.steps` callable
+(`chunk_query` / `embed_query` / `vector_search` / `rerank_chunks`) plus a
+`generate` step via `darwin.llm.vertex.vertex_complete`.
 
-Concretely, the legacy `retrieve(query, genes, top_k_override)` already fuses
-embed -> vector_search -> rerank in one call, driven by a flat genes dict. So
-we walk the DAG, gather per-stage params into an equivalent flat genes dict,
-make one `retrieve()` call, then run `generate` separately. This keeps the
-embedding-cache hits identical to the legacy path.
+PR-4 wires up the optional stages (pre_embed_enrich / fuse / post_retrieve_filter
+/ post_gen_refine) and full branching execution.
 """
 
 from __future__ import annotations
@@ -53,62 +50,67 @@ def operator_to_legacy_kwargs(node: PipelineNode) -> dict[str, Any]:
     return dict(node.params)
 
 
-def _assemble_legacy_genes(pipeline: RetrievalPipeline) -> dict[str, Any]:
-    """Collapse the DAG's chunk/embed/retrieve/rerank nodes into a flat genes dict
-    compatible with `darwin.retrieval.retriever.retrieve`.
-    """
-    genes: dict[str, Any] = {}
-    for node in pipeline.topological_sort():
-        kwargs = operator_to_legacy_kwargs(node)
-        if node.stage == "chunk":
-            genes["chunk_size"] = kwargs["chunk_size"]
-            genes["chunk_overlap"] = kwargs["chunk_overlap"]
-        elif node.stage == "embed":
-            genes["embedding_model"] = kwargs["model"]
-        elif node.stage == "retrieve":
-            genes["top_k"] = kwargs["top_k"]
-            genes["confidence_threshold"] = kwargs["confidence_threshold"]
-            genes["source_routing"] = kwargs["source_routing"]
-        elif node.stage == "rerank":
-            genes["rerank"] = kwargs["method"]
-    return genes
-
-
 async def execute_pipeline(
     pipeline: RetrievalPipeline,
     query: str,
 ):
-    """Execute the DAG end-to-end. Returns dict with `answer`, `chunks`.
+    """Execute the DAG end-to-end via discrete steps.
 
-    For Pass 2 this walks topological order and invokes the legacy functions.
-    Future passes can introduce branching execution if multiple parallel
-    retrieve-fuse paths exist.
+    Walks `pipeline.topological_sort()` and dispatches each node to its
+    corresponding step function based on `node.stage`. Branching is NOT yet
+    supported (PR-4 adds it). For PR-3, we expect linear DAGs only — the
+    `default_linear_pipeline` output.
+
+    Returns dict with `answer`, `chunks`, and `embedding` keys.
     """
-    from darwin.retrieval.retriever import retrieve
+    from darwin.retrieval.steps import (
+        chunk_query,
+        embed_query,
+        vector_search,
+        rerank_chunks,
+    )
 
     sorted_nodes = pipeline.topological_sort()
-    legacy_genes = _assemble_legacy_genes(pipeline)
 
-    chunks = await retrieve(query, legacy_genes)
-
+    current_query: str = query
+    embedding: list[float] = []
+    chunks: list = []
     answer: str = ""
+    embedding_model: str = "voyage-4"
+
     for node in sorted_nodes:
-        if node.stage != "generate":
-            continue
-        from darwin.llm.vertex import vertex_complete
+        kwargs = operator_to_legacy_kwargs(node)
+        if node.stage == "chunk":
+            current_query = await chunk_query(current_query, kwargs)
+        elif node.stage == "embed":
+            embedding_model = kwargs.get("model", "voyage-4")
+            embedding = await embed_query(current_query, kwargs)
+        elif node.stage == "retrieve":
+            # vector_search needs the genes-shaped dict to pick the right Atlas
+            # index/path; carry the embedding model from the embed node visited above.
+            search_params = {
+                "genes": {"embedding_model": embedding_model},
+                "top_k": kwargs["top_k"],
+                "confidence_threshold": kwargs["confidence_threshold"],
+            }
+            chunks = await vector_search(embedding, search_params)
+        elif node.stage == "rerank":
+            chunks = await rerank_chunks(current_query, chunks, kwargs)
+        elif node.stage == "generate":
+            from darwin.llm.vertex import vertex_complete
 
-        gen_kwargs = operator_to_legacy_kwargs(node)
-        model_alias = gen_kwargs.get("model", "claude_haiku")
-        model_id = _GENERATOR_MODEL_ALIASES.get(model_alias, model_alias)
-        context = "\n\n".join(
-            c.text if hasattr(c, "text") else str(c) for c in chunks[:10]
-        )
-        answer = await vertex_complete(
-            system="Answer the user query using the retrieved context.",
-            user=f"Query: {query}\n\nContext:\n{context}",
-            max_tokens=512,
-            model=model_id,
-        )
-        break
+            model_alias = kwargs.get("model", "claude_haiku")
+            model_id = _GENERATOR_MODEL_ALIASES.get(model_alias, model_alias)
+            context = "\n\n".join(
+                c.text if hasattr(c, "text") else str(c)
+                for c in chunks[:10]
+            )
+            answer = await vertex_complete(
+                system="Answer the user query using the retrieved context.",
+                user=f"Query: {current_query}\n\nContext:\n{context}",
+                max_tokens=512,
+                model=model_id,
+            )
+        # pre_embed_enrich / fuse / post_retrieve_filter / post_gen_refine — PR-4 wires them.
 
-    return {"answer": answer, "chunks": chunks}
+    return {"answer": answer, "chunks": chunks, "embedding": embedding}
