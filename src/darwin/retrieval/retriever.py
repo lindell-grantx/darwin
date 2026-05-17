@@ -8,9 +8,6 @@ from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from darwin.retrieval.embedder import embed_query
-from darwin.retrieval.reranker import rerank
-
 
 MODEL_INDEXES = {
     "voyage-4": "vec_voyage_4",
@@ -94,26 +91,67 @@ def build_vector_pipeline(query_vector: list[float], genes: dict[str, Any], top_
     ]
 
 
-async def retrieve(query: str, genes: dict[str, Any], top_k_override: int | None = None) -> list[RetrievedChunk]:
-    """Gene-driven retrieval pipeline over the chunks collection."""
-    model = _gene(genes, "embedding_model", "voyage-4")
-    top_k = int(top_k_override or _gene(genes, "top_k", 5))
-    threshold = float(_gene(genes, "confidence_threshold", 0.0))
-    transformed = _transform_query(query, str(_gene(genes, "query_transform", "none")))
-    query_vector = await embed_query(transformed, model)
+async def _run_vector_search(
+    embedding: list[float],
+    genes: dict[str, Any],
+    top_k: int,
+    confidence_threshold: float,
+) -> list[RetrievedChunk]:
+    """Atlas $vectorSearch + post-processing, extracted from retrieve() body.
 
-    cursor = _db().chunks.aggregate(build_vector_pipeline(query_vector, genes, top_k))
+    Behavior preserved verbatim: aggregation pipeline built via
+    build_vector_pipeline, cursor materialized to `top_k * 2` items, then
+    filtered by `confidence_threshold`.
+    """
+    cursor = _db().chunks.aggregate(build_vector_pipeline(embedding, genes, top_k))
     raw_chunks = await cursor.to_list(length=top_k * 2)
 
-    chunks = [
+    return [
         RetrievedChunk(
             chunk_id=str(item.get("_id") or item.get("id")),
             text=str(item.get("text", "")),
             score=float(item.get("score", 0.0)),
         )
         for item in raw_chunks
-        if float(item.get("score", 0.0)) >= threshold
+        if float(item.get("score", 0.0)) >= confidence_threshold
     ]
 
-    ordered = await rerank(query, chunks, str(_gene(genes, "rerank", "none")))
+
+async def retrieve(query: str, genes: dict[str, Any], top_k_override: int | None = None) -> list[RetrievedChunk]:
+    """Gene-driven retrieval pipeline over the chunks collection.
+
+    Composes the 4 discrete steps in retrieval.steps. Behavior is byte-identical
+    to the prior monolithic implementation — verified by tests/test_retrieve_parity.py.
+    """
+    from darwin.retrieval.steps import (
+        chunk_query as _chunk_query,
+        embed_query as _embed_query,
+        vector_search as _vector_search,
+        rerank_chunks as _rerank_chunks,
+    )
+
+    model = _gene(genes, "embedding_model", "voyage-4")
+    top_k = int(top_k_override or _gene(genes, "top_k", 5))
+    threshold = float(_gene(genes, "confidence_threshold", 0.0))
+    transform = str(_gene(genes, "query_transform", "none"))
+
+    # Step 1: chunk_query (no-op in Pass 3) — apply legacy _transform_query for parity.
+    rewritten = await _chunk_query(query, {})
+    transformed = _transform_query(rewritten, transform)
+
+    # Step 2: embed_query
+    embedding = await _embed_query(transformed, {"model": model})
+
+    # Step 3: vector_search
+    chunks = await _vector_search(
+        embedding,
+        {
+            "genes": genes,
+            "top_k": top_k,
+            "confidence_threshold": threshold,
+        },
+    )
+
+    # Step 4: rerank_chunks — pass original query (legacy behavior), not transformed.
+    ordered = await _rerank_chunks(query, chunks, {"method": str(_gene(genes, "rerank", "none"))})
     return ordered[:top_k]
