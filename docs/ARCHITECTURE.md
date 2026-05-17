@@ -447,3 +447,41 @@ Cells indexed by (retrieval_strategy_class × response_style × citation_density
 - Defender cell coverage > 40%
 - Attacker cell coverage grows monotonically
 - Nash strategy max delta between consecutive solves < 0.1 after 20 generations
+
+---
+
+## Pass 3 (Frontier refinements)
+
+Pass 3 refines the v2 frontier without extending it. Four PRs clean up rough edges shipped during Pass 2.
+
+### LLM-classifier attacker cells (PR-1)
+
+`src/darwin/attacker/llm_classifier.py` replaces the keyword heuristic in `qd_archive.cell_key_for_attacker`. Single Vertex Haiku call enumerating the 5 risk categories + 6 attack styles, returns `(risk, style)` JSON. Cached by sha256(payload) in an LRU (cap 1024). Opt-in via `DARWIN_USE_LLM_ATTACKER_CLASSIFIER=1` env var; falls back to keyword heuristic on Vertex unavailable or parse failure.
+
+### Two-stage multi-axis Nash (PR-2)
+
+`src/darwin/evolution/nash_two_stage.py` exports `solve_two_stage_nash`. Top-K defenders (K=10) × top-M attackers (M=10) × top-Q query classes (Q=5) get true multi-axis MSNE via nashpy. Tail defenders fall back to averaged-payoff Nash. Weights combined via softmax-over-game-value (degenerates to eval-count weighting in trivial cases) and renormalized to 1.0. Conductor's `_recompute_two_axis_nash` switched to use this; routing layer unchanged.
+
+### retrieve() decomposition (PR-3)
+
+`src/darwin/retrieval/steps.py` extracts the monolithic `retrieve()` into 4 discrete async callables: `chunk_query`, `embed_query`, `vector_search`, `rerank_chunks`. Legacy `retrieve()` now composes them (byte-identical for legacy callers, verified by `test_retrieve_parity.py`). `pipeline_runner.execute_pipeline` walks the DAG topologically and dispatches each node to its step.
+
+### DAG branching + novel operators (PR-4)
+
+`execute_pipeline` supports fan-out (one node, multiple downstream edges) and fuse (multiple upstream edges, RRF merge). Three novel operators ship under `src/darwin/retrieval/operators/`:
+
+- `multi_query` at chunk stage — HyDE-style query expansion, max 5 variants
+- `topic_summary` at retrieve stage — LightRAG-style cosine clustering + lazy Haiku summarization (cap 50 input chunks)
+- `citation_check` at post_gen_refine stage — Vertex Haiku verifies answer claims against chunks; opt-in via params.enabled
+
+Operators registered in `_OPERATORS_BY_STAGE`; DAG mutation picks them up automatically.
+
+### Pass 3 known limitations (carried to Pass 4)
+
+- `multi_query` operator ships but `execute_pipeline` doesn't yet iterate downstream subtrees per variant (data-fan-out not implemented). The operator works in isolation; full multi-query end-to-end requires Pass 4 execute_pipeline refactor.
+- `topic_summary` clustering is greedy single-pass; multi-pass or hierarchical clustering deferred.
+- `citation_check` issues list is informational only — doesn't block evaluation or feed into fitness yet.
+
+### Verification
+
+PR-3's parity test is the key safety net: legacy `retrieve()` output identical to the new composed path. Existing v1/v2 smoke runners continue to pass unchanged.
